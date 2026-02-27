@@ -1,6 +1,11 @@
-# Ignore vim swap files.
-.sw*
-.*.sw*
+# dependencies
+node_modules/
 
-# Ignore Libreoffice lock files.
-.~lock.*#
+# env files
+.env
+.env.*
+
+# logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*

@@ -1,0 +1,15 @@
+version: "3.9"
+services:
+  db:
+    image: postgres:16
+    container_name: budgetwise_postgres
+    environment:
+      POSTGRES_USER: budgetwise
+      POSTGRES_PASSWORD: budgetwise
+      POSTGRES_DB: budgetwise
+    ports:
+      - "5432:5432"
+    volumes:
+      - budgetwise_pgdata:/var/lib/postgresql/data
+volumes:
+  budgetwise_pgdata:

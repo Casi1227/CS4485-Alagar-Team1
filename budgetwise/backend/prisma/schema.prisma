@@ -1,0 +1,53 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String
+  name         String
+  createdAt    DateTime  @default(now())
+
+  budgets      Budget[]
+  expenses     Expense[]
+  goals        Goal[]    // Phase 2+
+}
+
+model Expense {
+  id       String   @id @default(cuid())
+  userId   String
+  amount   Float
+  category String   // Rent, Groceries, Tuition, etc.
+  date     DateTime // Supports backdating
+  note     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Budget {
+  id         String  @id @default(cuid())
+  userId     String
+  month      Int
+  year       Int
+  totalLimit Float   // The "Envelope"
+  category   String  // e.g., "Food"
+  allocated  Float   // Portion of totalLimit
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Goal {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String
+  target    Float
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
