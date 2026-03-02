@@ -1,24 +1,33 @@
-# dependencies
-node_modules/
+# Backend database.
+backend/dev.db
 
-# env files
+# env files.
 .env
 .env.*
 
-# logs
+!.env.example
+!.env.*.example
+
+# LibreOffice lock files.
+.~lock.*#
+
+# Vim swap files.
+.sw*
+.*.sw*
+
+# Next.js.
+.next/
+out/
+.vercel/
+.turbo/
+
+# Node.js.
+node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+pnpm-debug.log*
 
-# Local env and db
-backend/.env
-frontend/.env.local
-backend/dev.db
-
-# Dependencies and builds
-**/node_modules
-frontend/.next
-
-# Mac
+# macOS.
 .DS_Store
 __MACOSX
