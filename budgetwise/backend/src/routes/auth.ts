@@ -2,10 +2,12 @@ import { Router } from "express";
 import bcrypt from "bcryptjs";
 import { prisma } from "../lib/prisma.js";
 import { signAccessToken } from "../lib/jwt.js";
-import { loginSchema, registerSchema } from "../validators/authSchemas.js";
+import { loginSchema, registerSchema, resetPasswordSchema } from "../validators/authSchemas.js";
 import { authRequired, type AuthedRequest } from "../middleware/authRequired.js";
 
 export const authRouter = Router();
+
+const PASSWORD_HASH_SALT = 12;
 
 /**
  * R-101: Register/Login with email/password.
@@ -20,7 +22,7 @@ authRouter.post("/register", async (req, res) => {
   const existing = await prisma.user.findUnique({ where: { email } });
   if (existing) return res.status(409).json({ error: "Email already in use" });
 
-  const passwordHash = await bcrypt.hash(password, 12);
+  const passwordHash = await bcrypt.hash(password, PASSWORD_HASH_SALT);
   const user = await prisma.user.create({ data: { email, passwordHash, name } });
 
   const token = signAccessToken({ sub: user.id, email: user.email });
@@ -41,6 +43,28 @@ authRouter.post("/login", async (req, res) => {
 
   const token = signAccessToken({ sub: user.id, email: user.email });
   res.json({ token, user: { id: user.id, email: user.email, name: user.name } });
+});
+
+authRouter.post("/resetPassword", async (req, res) => {
+	const parsed = resetPasswordSchema.safeParse(req.body);
+	if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+	const { email, password } = parsed.data;
+
+	const userId = await prisma.user.findUnique({
+		where: { email },
+		select: { id: true },
+	});
+	if (!userId) return res.status(401).json({ error: "Invalid credentials" });
+
+	const passwordHash = await bcrypt.hash(password, PASSWORD_HASH_SALT);
+	const user = await prisma.user.update({
+		where: { id: userId },
+		date: { passwordHash },
+	});
+
+	const token = signAccessToken({ sub: user.id, email: user.email });
+	res.json({ token, user: { id: user.id, email: user.email, name: user.name } });
 });
 
 /**
