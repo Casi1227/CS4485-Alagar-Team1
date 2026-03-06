@@ -3,6 +3,8 @@ import { verifyAccessToken } from "../lib/jwt.js";
 
 export type AuthedRequest = Request & { user?: { id: string; email: string } };
 
+export const PASSWORD_HASH_SALT = 12;
+
 export function authRequired(req: AuthedRequest, res: Response, next: NextFunction) {
   const header = req.headers.authorization;
   if (!header?.startsWith("Bearer ")) {

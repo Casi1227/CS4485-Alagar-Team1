@@ -1,7 +1,7 @@
 import { Router } from "express";
 import bcrypt from "bcryptjs";
 import { prisma } from "../lib/prisma.js";
-import { authRequired, type AuthedRequest } from "../middleware/authRequired.js";
+import { authRequired, type AuthedRequest, PASSWORD_HASH_SALT } from "../middleware/authRequired.js";
 import { updatePasswordSchema, updateProfileSchema } from "../validators/authSchemas.js";
 
 export const profileRouter = Router();
@@ -39,7 +39,7 @@ profileRouter.put("/me/password", authRequired, async (req: AuthedRequest, res) 
   const ok = await bcrypt.compare(parsed.data.currentPassword, user.passwordHash);
   if (!ok) return res.status(401).json({ error: "Current password is incorrect" });
 
-  const passwordHash = await bcrypt.hash(parsed.data.newPassword, 12);
+  const passwordHash = await bcrypt.hash(parsed.data.newPassword, PASSWORD_HASH_SALT);
   await prisma.user.update({ where: { id: userId }, data: { passwordHash } });
   res.json({ ok: true });
 });

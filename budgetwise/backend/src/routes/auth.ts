@@ -3,11 +3,9 @@ import bcrypt from "bcryptjs";
 import { prisma } from "../lib/prisma.js";
 import { signAccessToken } from "../lib/jwt.js";
 import { loginSchema, registerSchema, resetPasswordSchema } from "../validators/authSchemas.js";
-import { authRequired, type AuthedRequest } from "../middleware/authRequired.js";
+import { authRequired, type AuthedRequest, PASSWORD_HASH_SALT } from "../middleware/authRequired.js";
 
 export const authRouter = Router();
-
-const PASSWORD_HASH_SALT = 12;
 
 /**
  * R-101: Register/Login with email/password.
