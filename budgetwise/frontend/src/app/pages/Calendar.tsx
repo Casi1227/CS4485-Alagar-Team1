@@ -194,7 +194,7 @@ export function Calendar() {
                         <div className="flex flex-wrap gap-1">
                           {Array.from(new Set(dayTransactions.map((t) => t.category)))
                             .slice(0, 3)
-                            .map((c) => (
+                            .map((c: string) => (
                               <span
                                 key={c}
                                 className="inline-block w-2 h-2 rounded-full"
