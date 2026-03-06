@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 import {
   addMonths,
   eachDayOfInterval,
@@ -17,6 +18,8 @@ import {
 
 import { Card } from "../components/ui/card";
 import { Input } from "../components/ui/input";
+import { apiJson } from "../lib/api";
+import { useAuth } from "../context/AuthContext";
 
 interface Transaction {
   id: string;
@@ -27,130 +30,16 @@ interface Transaction {
   description: string;
 }
 
-// NOTE: This is a UI only calendar using mock data.
-// In the future, replace `mockTransactions` with API calls to your backend expenses endpoints.
-const mockTransactions: Transaction[] = [
-  {
-    id: "1",
-    date: new Date(2026, 1, 1),
-    type: "income",
-    amount: 3200,
-    category: "Salary",
-    description: "Monthly Salary",
-  },
-  {
-    id: "2",
-    date: new Date(2026, 1, 1),
+function expenseToTransaction(e: { id: string; amount: number; category: string; date: string; note?: string | null }): Transaction {
+  return {
+    id: e.id,
+    date: new Date(e.date),
     type: "expense",
-    amount: 45,
-    category: "Food & Dining",
-    description: "Groceries",
-  },
-  {
-    id: "3",
-    date: new Date(2026, 1, 5),
-    type: "expense",
-    amount: 120,
-    category: "Utilities",
-    description: "Electricity Bill",
-  },
-  {
-    id: "4",
-    date: new Date(2026, 1, 5),
-    type: "expense",
-    amount: 60,
-    category: "Utilities",
-    description: "Internet Bill",
-  },
-  {
-    id: "5",
-    date: new Date(2026, 1, 8),
-    type: "expense",
-    amount: 85,
-    category: "Food & Dining",
-    description: "Restaurant",
-  },
-  {
-    id: "6",
-    date: new Date(2026, 1, 10),
-    type: "income",
-    amount: 500,
-    category: "Freelance",
-    description: "Web Design Project",
-  },
-  {
-    id: "7",
-    date: new Date(2026, 1, 12),
-    type: "expense",
-    amount: 200,
-    category: "Personal Care",
-    description: "Haircut & Spa",
-  },
-  {
-    id: "8",
-    date: new Date(2026, 1, 14),
-    type: "expense",
-    amount: 50,
-    category: "Transportation",
-    description: "Gas",
-  },
-  {
-    id: "9",
-    date: new Date(2026, 1, 15),
-    type: "income",
-    amount: 3200,
-    category: "Salary",
-    description: "Monthly Salary",
-  },
-  {
-    id: "10",
-    date: new Date(2026, 1, 18),
-    type: "expense",
-    amount: 150,
-    category: "Entertainment",
-    description: "Concert Tickets",
-  },
-  {
-    id: "11",
-    date: new Date(2026, 1, 20),
-    type: "expense",
-    amount: 75,
-    category: "Food & Dining",
-    description: "Groceries",
-  },
-  {
-    id: "12",
-    date: new Date(2026, 1, 22),
-    type: "expense",
-    amount: 100,
-    category: "Personal Care",
-    description: "Gym Membership",
-  },
-  {
-    id: "13",
-    date: new Date(2026, 1, 25),
-    type: "income",
-    amount: 300,
-    category: "Freelance",
-    description: "Logo Design",
-  },
-  {
-    id: "14",
-    date: new Date(2026, 1, 27),
-    type: "expense",
-    amount: 90,
-    category: "Food & Dining",
-    description: "Dining Out",
-  },
-  {
-    id: "15",
-    date: new Date(2026, 1, 28),
-    type: "expense",
-    amount: 1200,
-    category: "Housing",
-    description: "Rent Payment",
-  },
-];
+    amount: e.amount,
+    category: e.category,
+    description: e.note || e.category,
+  };
+}
 
 const categoryColors: Record<string, string> = {
   "Food & Dining": "#DC2626",
@@ -169,9 +58,50 @@ const categoryColors: Record<string, string> = {
 };
 
 export function Calendar() {
-  const [currentMonth, setCurrentMonth] = useState(new Date(2026, 1, 1));
-  const [selectedDate, setSelectedDate] = useState(new Date(2026, 1, 27));
+  const { isAuthenticated } = useAuth();
+  const router = useRouter();
+  const today = useMemo(() => new Date(), []);
+
+  const [currentMonth, setCurrentMonth] = useState(today);
+  const [selectedDate, setSelectedDate] = useState(today);
   const [search, setSearch] = useState("");
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isAuthenticated) router.push("/login");
+  }, [isAuthenticated, router]);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+
+    const monthStart = startOfMonth(currentMonth);
+    const monthEnd = endOfMonth(currentMonth);
+    const from = format(monthStart, "yyyy-MM-dd");
+    const to = format(monthEnd, "yyyy-MM-dd");
+
+    apiJson(`/api/expenses?from=${from}&to=${to}`)
+      .then((data: { expenses?: unknown[] }) => {
+        if (cancelled) return;
+        const items = (data?.expenses || []) as { id: string; amount: number; category: string; date: string; note?: string | null }[];
+        setTransactions(items.map(expenseToTransaction));
+      })
+      .catch((err) => {
+        if (!cancelled) setError(err instanceof Error ? err.message : "Failed to load expenses");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, currentMonth]);
 
   const monthStart = startOfMonth(currentMonth);
   const monthEnd = endOfMonth(currentMonth);
@@ -180,8 +110,8 @@ export function Calendar() {
   const calendarDays = eachDayOfInterval({ start: calendarStart, end: calendarEnd });
 
   const selectedDateTransactions = useMemo(
-    () => mockTransactions.filter((t) => isSameDay(t.date, selectedDate)),
-    [selectedDate]
+    () => transactions.filter((t) => isSameDay(t.date, selectedDate)),
+    [transactions, selectedDate]
   );
 
   const filteredSelectedTransactions = useMemo(() => {
@@ -190,31 +120,38 @@ export function Calendar() {
     return selectedDateTransactions.filter((t) => `${t.category} ${t.description}`.toLowerCase().includes(q));
   }, [search, selectedDateTransactions]);
 
-  const getTransactionsForDate = (date: Date) => mockTransactions.filter((t) => isSameDay(t.date, date));
+  const getTransactionsForDate = (date: Date) => transactions.filter((t) => isSameDay(t.date, date));
 
-  const monthTransactions = useMemo(() => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    return mockTransactions.filter((t) => {
-      const transactionDate = new Date(t.date);
-      transactionDate.setHours(0, 0, 0, 0);
-      return isSameMonth(t.date, currentMonth) && transactionDate <= today;
-    });
-  }, [currentMonth]);
+  const monthTransactions = useMemo(
+    () => transactions.filter((t) => isSameMonth(t.date, currentMonth)),
+    [transactions, currentMonth]
+  );
 
   const totalIncome = monthTransactions.filter((t) => t.type === "income").reduce((sum, t) => sum + t.amount, 0);
   const totalExpense = monthTransactions.filter((t) => t.type === "expense").reduce((sum, t) => sum + t.amount, 0);
   const net = totalIncome - totalExpense;
+
+  if (!isAuthenticated) return null;
 
   return (
     <div className="p-6">
       <div className="max-w-7xl mx-auto">
         <div className="mb-8">
           <h1 className="text-4xl font-bold text-gray-900 mb-2">Calendar</h1>
-          <p className="text-gray-600">View income and expenses by day</p>
+          <p className="text-gray-600">View expenses by day</p>
         </div>
 
+        {error ? (
+          <div className="mb-6 p-4 rounded-lg border border-red-200 bg-red-50 text-red-700">
+            {error}
+          </div>
+        ) : null}
+
+        {loading ? (
+          <div className="flex items-center justify-center min-h-[40vh]">
+            <Loader2 className="w-10 h-10 text-indigo-600 animate-spin" />
+          </div>
+        ) : (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <Card className="lg:col-span-2 p-6">
             <div className="flex items-center justify-between mb-4">
@@ -257,7 +194,7 @@ export function Calendar() {
                         <div className="flex flex-wrap gap-1">
                           {Array.from(new Set(dayTransactions.map((t) => t.category)))
                             .slice(0, 3)
-                            .map((c) => (
+                            .map((c: string) => (
                               <span
                                 key={c}
                                 className="inline-block w-2 h-2 rounded-full"
@@ -320,6 +257,7 @@ export function Calendar() {
             </div>
           </Card>
         </div>
+        )}
       </div>
     </div>
   );

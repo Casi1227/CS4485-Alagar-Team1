@@ -10,7 +10,21 @@ export const expensesRouter = Router();
 
 expensesRouter.get("/", authRequired, async (req: AuthedRequest, res) => {
   const userId = req.user!.id;
-  const items = await prisma.expense.findMany({ where: { userId }, orderBy: { date: "desc" } });
+  const from = req.query.from as string | undefined;
+  const to = req.query.to as string | undefined;
+
+  const where: { userId: string; date?: { gte?: Date; lte?: Date } } = { userId };
+  if (from || to) {
+    where.date = {};
+    if (from) where.date.gte = new Date(from);
+    if (to) {
+      const toDate = new Date(to);
+      toDate.setHours(23, 59, 59, 999);
+      where.date.lte = toDate;
+    }
+  }
+
+  const items = await prisma.expense.findMany({ where, orderBy: { date: "desc" } });
   res.json({ expenses: items });
 });
 
