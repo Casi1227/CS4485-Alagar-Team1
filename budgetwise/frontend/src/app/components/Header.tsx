@@ -241,42 +241,56 @@ export function Header() {
               </div>
 
               {/* Navigation Links */}
-              <div className="space-y-2">
-                <p className="px-4 text-sm font-medium text-gray-500">Navigation</p>
-                <Link
-                  href="/"
-                  onClick={() => setIsMobileMenuOpen(false)}
-                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 rounded-lg transition-colors"
-                >
-                  <LayoutDashboard className="w-5 h-5 text-indigo-600" />
-                  <div className="text-left">
-                    <div className="font-medium text-gray-900">Dashboard</div>
-                    <div className="text-xs text-gray-500">Overview and analytics</div>
-                  </div>
-                </Link>
-                <Link
-                  href="/budget-creator"
-                  onClick={() => setIsMobileMenuOpen(false)}
-                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 rounded-lg transition-colors"
-                >
-                  <Sparkles className="w-5 h-5 text-purple-600" />
-                  <div className="text-left">
-                    <div className="font-medium text-gray-900">AI Budget Creator</div>
-                    <div className="text-xs text-gray-500">Create optimized budget</div>
-                  </div>
-                </Link>
-                <Link
-                  href="/expenses"
-                  onClick={() => setIsMobileMenuOpen(false)}
-                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 rounded-lg transition-colors"
-                >
-                  <Receipt className="w-5 h-5 text-green-600" />
-                  <div className="text-left">
-                    <div className="font-medium text-gray-900">Expenses</div>
-                    <div className="text-xs text-gray-500">Track all expenses</div>
-                  </div>
-                </Link>
-              </div>
+<div className="space-y-2">
+  <p className="px-4 text-sm font-medium text-gray-500">Navigation</p>
+  <Link
+    href="/"
+    onClick={() => setIsMobileMenuOpen(false)}
+    className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 rounded-lg transition-colors"
+  >
+    <LayoutDashboard className="w-5 h-5 text-indigo-600" />
+    <div className="text-left">
+      <div className="font-medium text-gray-900">Dashboard</div>
+      <div className="text-xs text-gray-500">Overview and analytics</div>
+    </div>
+  </Link>
+
+  <Link
+    href="/budget-creator"
+    onClick={() => setIsMobileMenuOpen(false)}
+    className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 rounded-lg transition-colors"
+  >
+    <Sparkles className="w-5 h-5 text-purple-600" />
+    <div className="text-left">
+      <div className="font-medium text-gray-900">AI Budget Creator</div>
+      <div className="text-xs text-gray-500">Create optimized budget</div>
+    </div>
+  </Link>
+
+  <Link
+    href="/expenses"
+    onClick={() => setIsMobileMenuOpen(false)}
+    className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 rounded-lg transition-colors"
+  >
+    <Receipt className="w-5 h-5 text-green-600" />
+    <div className="text-left">
+      <div className="font-medium text-gray-900">Expenses</div>
+      <div className="text-xs text-gray-500">Track all expenses</div>
+    </div>
+  </Link>
+
+  <Link
+    href="/calendar"
+    onClick={() => setIsMobileMenuOpen(false)}
+    className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 rounded-lg transition-colors"
+  >
+    <CalendarDays className="w-5 h-5 text-blue-600" />
+    <div className="text-left">
+      <div className="font-medium text-gray-900">Calendar</div>
+      <div className="text-xs text-gray-500">View by day</div>
+    </div>
+  </Link>
+</div>
 
               {/* Add Accounts */}
               <div className="space-y-2">
