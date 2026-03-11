@@ -13,6 +13,7 @@ CREATE TABLE "Expense" (
     "userId" TEXT NOT NULL,
     "amount" REAL NOT NULL,
     "category" TEXT NOT NULL,
+    "type" TEXT NOT NULL DEFAULT 'EXPENSE',
     "date" DATETIME NOT NULL,
     "note" TEXT,
     CONSTRAINT "Expense_userId_fkey"
