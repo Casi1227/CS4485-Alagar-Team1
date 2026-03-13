@@ -30,11 +30,18 @@ interface Transaction {
   description: string;
 }
 
-function expenseToTransaction(e: { id: string; amount: number; category: string; date: string; note?: string | null }): Transaction {
+function expenseToTransaction(e: {
+  id: string;
+  amount: number;
+  category: string;
+  date: string;
+  note?: string | null;
+  type?: "EXPENSE" | "INCOME" | null;
+}): Transaction {
   return {
     id: e.id,
     date: new Date(e.date),
-    type: "expense",
+    type: e.type === "INCOME" ? "income" : "expense",
     amount: e.amount,
     category: e.category,
     description: e.note || e.category,
@@ -51,10 +58,14 @@ const categoryColors: Record<string, string> = {
   Utilities: "#D97706",
   Health: "#0891B2",
   "Personal Care": "#BB8FCE",
+  Rent: "#6366F1",
+  Tuition: "#A855F7",
+  Dining: "#F97316",
   Other: "#95A5A6",
-  Salary: "#10B981",
-  Freelance: "#34D399",
-  Investment: "#6EE7B7",
+  Paycheck: "#10B981",
+  Scholarship: "#06B6D4",
+  Gift: "#F59E0B",
+  Refund: "#3B82F6",
 };
 
 export function Calendar() {
@@ -88,7 +99,14 @@ export function Calendar() {
     apiJson(`/api/expenses?from=${from}&to=${to}`)
       .then((data: { expenses?: unknown[] }) => {
         if (cancelled) return;
-        const items = (data?.expenses || []) as { id: string; amount: number; category: string; date: string; note?: string | null }[];
+        const items = (data?.expenses || []) as {
+          id: string;
+          amount: number;
+          category: string;
+          date: string;
+          note?: string | null;
+          type?: "EXPENSE" | "INCOME" | null;
+        }[];
         setTransactions(items.map(expenseToTransaction));
       })
       .catch((err) => {
