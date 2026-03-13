@@ -162,12 +162,12 @@ export function Login() {
                   />
                   <span className="ml-2 text-sm text-gray-600">Remember me</span>
                 </label>
-                <button
-                  type="button"
-                  className="text-sm text-indigo-600 hover:text-indigo-700 font-medium"
+               <a
+                href="/forgot-password"
+            className="text-sm text-indigo-600 hover:text-indigo-700 font-medium hover:underline"
                 >
-                  Forgot password?
-                </button>
+              Forgot password?
+              </a>
               </div>
 
               {/* Submit Button */}
