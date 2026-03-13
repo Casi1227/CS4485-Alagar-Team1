@@ -11,23 +11,24 @@ function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
 
+  const publicRoutes = ['/login', '/register', '/forgot-password', '/reset-password'];
+  const isPublic = publicRoutes.includes(pathname);
+
   useEffect(() => {
-    const isPublic = pathname === '/login' || pathname === '/register';
     if (!isAuthenticated && !isPublic) {
       router.push('/login');
     }
 
-    if (isAuthenticated && (pathname === '/login' || pathname === '/register')) {
+    if (isAuthenticated && isPublic) {
       router.push('/');
     }
-  }, [isAuthenticated, pathname, router]);
+  }, [isAuthenticated, isPublic, router]);
 
-  const isPublic = pathname === '/login' || pathname === '/register';
   if (!isAuthenticated && !isPublic) {
     return null;
   }
 
-  if (pathname === '/login' || pathname === '/register') {
+  if (isPublic) {
     return <>{children}</>;
   }
 
@@ -46,4 +47,3 @@ export function Providers({ children }: { children: ReactNode }) {
     </AuthProvider>
   );
 }
-
