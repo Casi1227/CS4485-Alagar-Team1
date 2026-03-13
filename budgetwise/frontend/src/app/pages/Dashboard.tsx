@@ -11,7 +11,10 @@ export type DashboardData = {
   month: number;
   year: number;
   totalBudget: number;
-  totalSpent: number;
+  totalSpent: number; // expense-only (legacy)
+  totalIncome?: number;
+  totalExpense?: number;
+  net?: number;
   remaining: number;
   categoryBreakdown: { name: string; value: number; color: string }[];
   remainingByCategory: { category: string; allocated: number; spent: number; remaining: number }[];
@@ -40,9 +43,10 @@ export function Dashboard() {
   }, []);
 
   const totalBudget = data?.totalBudget ?? 0;
-  const totalSpent = data?.totalSpent ?? 0;
+  const totalExpense = data?.totalExpense ?? data?.totalSpent ?? 0;
+  const totalIncome = data?.totalIncome ?? 0;
   const remaining = data?.remaining ?? 0;
-  const percentSpent = totalBudget > 0 ? (totalSpent / totalBudget) * 100 : 0;
+  const percentSpent = totalBudget > 0 ? (totalExpense / totalBudget) * 100 : 0;
   const monthYearLabel = data
     ? `${MONTH_NAMES[data.month - 1]} ${data.year}`
     : `${MONTH_NAMES[new Date().getMonth()]} ${new Date().getFullYear()}`;
@@ -76,7 +80,7 @@ export function Dashboard() {
         </div>
 
         {/* Summary Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
           <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-100">
             <div className="flex items-center justify-between mb-4">
               <div className="p-3 bg-blue-100 rounded-lg">
@@ -90,12 +94,23 @@ export function Dashboard() {
 
           <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-100">
             <div className="flex items-center justify-between mb-4">
+              <div className="p-3 bg-green-100 rounded-lg">
+                <TrendingUp className="w-6 h-6 text-green-600" />
+              </div>
+              <span className="text-sm text-gray-500">Total Income</span>
+            </div>
+            <div className="text-3xl font-bold text-gray-900">${totalIncome.toFixed(2)}</div>
+            <p className="text-sm text-gray-500 mt-2">This month&apos;s income</p>
+          </div>
+
+          <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-100">
+            <div className="flex items-center justify-between mb-4">
               <div className="p-3 bg-red-100 rounded-lg">
                 <TrendingDown className="w-6 h-6 text-red-600" />
               </div>
-              <span className="text-sm text-gray-500">Total Spent</span>
+              <span className="text-sm text-gray-500">Total Expenses</span>
             </div>
-            <div className="text-3xl font-bold text-gray-900">${totalSpent.toFixed(2)}</div>
+            <div className="text-3xl font-bold text-gray-900">${totalExpense.toFixed(2)}</div>
             <p className="text-sm text-gray-500 mt-2">
               {totalBudget > 0 ? `${percentSpent.toFixed(1)}% of budget` : 'No budget set'}
             </p>
@@ -103,8 +118,8 @@ export function Dashboard() {
 
           <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-100">
             <div className="flex items-center justify-between mb-4">
-              <div className="p-3 bg-green-100 rounded-lg">
-                <TrendingUp className="w-6 h-6 text-green-600" />
+              <div className="p-3 bg-indigo-100 rounded-lg">
+                <DollarSign className="w-6 h-6 text-indigo-600" />
               </div>
               <span className="text-sm text-gray-500">Remaining</span>
             </div>

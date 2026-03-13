@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Calendar, DollarSign, Trash2, Plus, Save, Minus } from 'lucide-react';
+import { Calendar, DollarSign, Trash2, Plus, Save, Minus, Pencil } from 'lucide-react';
 import { z } from 'zod';
 import { apiJson } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
@@ -30,24 +30,15 @@ const expenseCategories = [
   'Rent',
   'Groceries',
   'Tuition',
-  'Food & Dining',
   'Transportation',
-  'Books & Supplies',
   'Entertainment',
-  'Personal Care',
-  'Health & Fitness',
   'Utilities',
-  'Savings',
+  'Health',
+  'Dining',
   'Other',
 ];
 
-const incomeCategories = [
-  'Paycheck',
-  'Scholarship',
-  'Gift',
-  'Refund',
-  'Other',
-];
+const incomeCategories = ['Paycheck', 'Scholarship', 'Gift', 'Refund', 'Other'];
 
 type FieldErrors = {
   amount?: string;
@@ -74,29 +65,47 @@ export function Expenses() {
   const [note, setNote] = useState('');
   const [saving, setSaving] = useState(false);
 
+  const [editingItem, setEditingItem] = useState<Expense | null>(null);
+  const [editType, setEditType] = useState<TxType>('EXPENSE');
+  const [editAmount, setEditAmount] = useState('');
+  const [editCategory, setEditCategory] = useState(expenseCategories[0]);
+  const [editDate, setEditDate] = useState('');
+  const [editNote, setEditNote] = useState('');
+  const [editSaving, setEditSaving] = useState(false);
+  const [editFieldErrors, setEditFieldErrors] = useState<FieldErrors>({});
+
   useEffect(() => {
     if (!isAuthenticated) router.push('/login');
   }, [isAuthenticated, router]);
 
-  // Keep category options aligned with type
   useEffect(() => {
     if (type === 'EXPENSE') setCategory(expenseCategories[0]);
     else setCategory(incomeCategories[0]);
   }, [type]);
+
+  useEffect(() => {
+    if (!editingItem) return;
+    const list = editType === 'EXPENSE' ? expenseCategories : incomeCategories;
+    if (!list.includes(editCategory)) {
+      setEditCategory(list[0]);
+    }
+  }, [editType, editingItem, editCategory]);
 
   const refresh = async () => {
     setLoading(true);
     setError(null);
     try {
       const data = await apiJson('/api/expenses');
-      setItems((data?.expenses || []).map((e: any) => ({
-        id: e.id,
-        amount: e.amount,
-        category: e.category,
-        type: (e.type || 'EXPENSE') as TxType,
-        date: new Date(e.date).toISOString(),
-        note: e.note,
-      })));
+      setItems(
+        (data?.expenses || []).map((e: any) => ({
+          id: e.id,
+          amount: e.amount,
+          category: e.category,
+          type: (e.type || 'EXPENSE') as TxType,
+          date: new Date(e.date).toISOString(),
+          note: e.note,
+        })),
+      );
     } catch (e: any) {
       setError(e?.message || 'Failed to load expenses');
     } finally {
@@ -106,12 +115,17 @@ export function Expenses() {
 
   useEffect(() => {
     if (isAuthenticated) refresh();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated]);
 
   const totals = useMemo(() => {
-    const incomeTotal = items.filter((x) => x.type === 'INCOME').reduce((s, x) => s + (x.amount || 0), 0);
-    const expenseTotal = items.filter((x) => x.type === 'EXPENSE').reduce((s, x) => s + (x.amount || 0), 0);
+    const incomeTotal = items
+      .filter((x) => x.type === 'INCOME')
+      .reduce((s, x) => s + (x.amount || 0), 0);
+
+    const expenseTotal = items
+      .filter((x) => x.type === 'EXPENSE')
+      .reduce((s, x) => s + (x.amount || 0), 0);
+
     const net = incomeTotal - expenseTotal;
     return { incomeTotal, expenseTotal, net };
   }, [items]);
@@ -191,6 +205,90 @@ export function Expenses() {
   };
 
   const categoryList = type === 'EXPENSE' ? expenseCategories : incomeCategories;
+  const editCategoryList = editType === 'EXPENSE' ? expenseCategories : incomeCategories;
+
+  const openEdit = (item: Expense) => {
+    setEditingItem(item);
+    setEditType(item.type);
+    setEditAmount(item.amount.toString());
+    setEditCategory(item.category);
+    setEditDate(new Date(item.date).toISOString().slice(0, 10));
+    setEditNote(item.note || '');
+    setEditFieldErrors({});
+    setError(null);
+  };
+
+  const closeEdit = () => {
+    setEditingItem(null);
+    setEditSaving(false);
+    setEditFieldErrors({});
+  };
+
+  const onEditSave = async () => {
+    if (!editingItem) return;
+
+    setEditSaving(true);
+    setError(null);
+    setEditFieldErrors({});
+
+    try {
+      const parsed = createExpenseSchema.parse({
+        amount: editAmount,
+        category: editCategory,
+        date: editDate,
+        note: editNote || undefined,
+        type: editType,
+      });
+
+      await apiJson(`/api/expenses/${editingItem.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          amount: parsed.amount,
+          category: parsed.category,
+          date: parsed.date,
+          note: parsed.note,
+          type: parsed.type,
+        }),
+      });
+
+      closeEdit();
+      await refresh();
+    } catch (e: any) {
+      if (e instanceof z.ZodError) {
+        const flattened = e.flatten();
+        setEditFieldErrors({
+          amount: flattened.fieldErrors.amount?.[0],
+          category: flattened.fieldErrors.category?.[0],
+          date: flattened.fieldErrors.date?.[0],
+          note: flattened.fieldErrors.note?.[0],
+          type: flattened.fieldErrors.type?.[0],
+        });
+        setError('Please fix the highlighted fields.');
+        return;
+      }
+
+      const server = e?.data || e?.response || e;
+      const serverFieldErrors = server?.error?.fieldErrors;
+
+      if (serverFieldErrors) {
+        setEditFieldErrors({
+          amount: serverFieldErrors.amount?.[0],
+          category: serverFieldErrors.category?.[0],
+          date: serverFieldErrors.date?.[0],
+          note: serverFieldErrors.note?.[0],
+          type: serverFieldErrors.type?.[0],
+        });
+        setError('Please fix the highlighted fields.');
+        return;
+      }
+
+      setError(e?.message || 'Failed to update item');
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
+  if (!isAuthenticated) return null;
 
   return (
     <div className="p-6">
@@ -211,12 +309,9 @@ export function Expenses() {
         </div>
 
         {error ? (
-          <div className="mb-4 p-3 rounded-lg border border-red-200 bg-red-50 text-red-700">
-            {error}
-          </div>
+          <div className="mb-4 p-3 rounded-lg border border-red-200 bg-red-50 text-red-700">{error}</div>
         ) : null}
 
-        {/* Summary */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
           <div className="bg-white rounded-xl shadow-lg p-4 border border-gray-100">
             <div className="text-sm text-gray-600">Income</div>
@@ -232,7 +327,11 @@ export function Expenses() {
           </div>
           <div className="bg-white rounded-xl shadow-lg p-4 border border-gray-100">
             <div className="text-sm text-gray-600">Net</div>
-            <div className={`text-lg font-semibold flex items-center gap-1 ${totals.net >= 0 ? 'text-gray-900' : 'text-red-700'}`}>
+            <div
+              className={`text-lg font-semibold flex items-center gap-1 ${
+                totals.net >= 0 ? 'text-gray-900' : 'text-red-700'
+              }`}
+            >
               <DollarSign className="w-4 h-4" /> {totals.net.toFixed(2)}
             </div>
           </div>
@@ -339,7 +438,7 @@ export function Expenses() {
                     <th className="text-left py-3 px-4 text-sm font-semibold text-gray-600">Category</th>
                     <th className="text-left py-3 px-4 text-sm font-semibold text-gray-600">Note</th>
                     <th className="text-right py-3 px-4 text-sm font-semibold text-gray-600">Amount</th>
-                    <th className="text-center py-3 px-4 text-sm font-semibold text-gray-600">Action</th>
+                    <th className="text-center py-3 px-4 text-sm font-semibold text-gray-600">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -350,11 +449,19 @@ export function Expenses() {
                         <td className="py-3 px-4">
                           <div className="flex items-center gap-2 text-sm text-gray-600">
                             <Calendar className="w-4 h-4" />
-                            {new Date(x.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                            {new Date(x.date).toLocaleDateString('en-US', {
+                              month: 'short',
+                              day: 'numeric',
+                              year: 'numeric',
+                            })}
                           </div>
                         </td>
                         <td className="py-3 px-4 text-sm font-semibold">
-                          <span className={`px-2 py-0.5 rounded ${isIncome ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                          <span
+                            className={`px-2 py-0.5 rounded ${
+                              isIncome ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                            }`}
+                          >
                             {x.type}
                           </span>
                         </td>
@@ -365,20 +472,33 @@ export function Expenses() {
                         </td>
                         <td className="py-3 px-4 text-sm text-gray-700">{x.note || ''}</td>
                         <td className="py-3 px-4 text-right">
-                          <div className={`flex items-center justify-end gap-1 text-sm font-semibold ${isIncome ? 'text-green-700' : 'text-gray-900'}`}>
+                          <div
+                            className={`flex items-center justify-end gap-1 text-sm font-semibold ${
+                              isIncome ? 'text-green-700' : 'text-gray-900'
+                            }`}
+                          >
                             <DollarSign className="w-4 h-4" />
                             {isIncome ? '+' : '-'}
                             {x.amount.toFixed(2)}
                           </div>
                         </td>
                         <td className="py-3 px-4 text-center">
-                          <button
-                            onClick={() => onDelete(x.id)}
-                            className="inline-flex items-center justify-center p-2 hover:bg-red-50 rounded-lg transition-colors"
-                            aria-label="Delete"
-                          >
-                            <Trash2 className="w-4 h-4 text-red-600" />
-                          </button>
+                          <div className="flex items-center justify-center gap-1">
+                            <button
+                              onClick={() => openEdit(x)}
+                              className="inline-flex items-center justify-center p-2 hover:bg-indigo-50 rounded-lg transition-colors"
+                              aria-label="Edit"
+                            >
+                              <Pencil className="w-4 h-4 text-indigo-600" />
+                            </button>
+                            <button
+                              onClick={() => onDelete(x.id)}
+                              className="inline-flex items-center justify-center p-2 hover:bg-red-50 rounded-lg transition-colors"
+                              aria-label="Delete"
+                            >
+                              <Trash2 className="w-4 h-4 text-red-600" />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -391,6 +511,106 @@ export function Expenses() {
           )}
         </div>
       </div>
+
+      {editingItem ? (
+        <div className="fixed inset-0 z-20 flex items-center justify-center bg-black/30 backdrop-blur-sm">
+          <div className="bg-white rounded-xl shadow-2xl border border-gray-100 w-full max-w-lg p-6">
+            <div className="flex items-start justify-between gap-4 mb-4">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900">Edit Item</h2>
+                <p className="text-sm text-gray-600">Update the details of this entry.</p>
+              </div>
+              <button onClick={closeEdit} className="text-sm text-gray-500 hover:text-gray-700">
+                Close
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Type</label>
+                <select
+                  value={editType}
+                  onChange={(e) => setEditType(e.target.value as TxType)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+                >
+                  <option value="EXPENSE">Expense</option>
+                  <option value="INCOME">Income</option>
+                </select>
+                {editFieldErrors.type ? <p className="mt-1 text-sm text-red-600">{editFieldErrors.type}</p> : null}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Amount</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={editAmount}
+                  onChange={(e) => setEditAmount(e.target.value)}
+                  inputMode="decimal"
+                  placeholder="12.34"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+                />
+                {editFieldErrors.amount ? <p className="mt-1 text-sm text-red-600">{editFieldErrors.amount}</p> : null}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Category</label>
+                <select
+                  value={editCategory}
+                  onChange={(e) => setEditCategory(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+                >
+                  {editCategoryList.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
+                {editFieldErrors.category ? <p className="mt-1 text-sm text-red-600">{editFieldErrors.category}</p> : null}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Date</label>
+                <input
+                  type="date"
+                  value={editDate}
+                  onChange={(e) => setEditDate(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+                />
+                {editFieldErrors.date ? <p className="mt-1 text-sm text-red-600">{editFieldErrors.date}</p> : null}
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-2">Note (optional)</label>
+                <input
+                  value={editNote}
+                  onChange={(e) => setEditNote(e.target.value)}
+                  placeholder="Optional"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+                />
+                {editFieldErrors.note ? <p className="mt-1 text-sm text-red-600">{editFieldErrors.note}</p> : null}
+              </div>
+            </div>
+
+            <div className="mt-6 flex items-center justify-end gap-3">
+              <button
+                onClick={closeEdit}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={onEditSave}
+                disabled={editSaving}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-black disabled:opacity-60"
+              >
+                <Save className="w-4 h-4" />
+                <span>{editSaving ? 'Saving...' : 'Save changes'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
