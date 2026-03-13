@@ -10,6 +10,7 @@ import { profileRouter } from "./routes/profile.js";
 import { expensesRouter } from "./routes/expenses.js";
 import { budgetsRouter } from "./routes/budgets.js";
 import { dashboardRouter } from "./routes/dashboard.js";
+import { aiRouter } from "./routes/ai.js";
 import { settingsRouter } from "./routes/settings.js";
 
 export function createApp() {
@@ -26,6 +27,8 @@ export function createApp() {
   app.use("/api/expenses", expensesRouter);
   app.use("/api/budgets", budgetsRouter);
   app.use("/api/dashboard", dashboardRouter);
+  // Mount AI insights router for Gemini-powered recommendations
+  app.use("/api/ai", aiRouter);
   app.use("/api/settings", settingsRouter);
 
   app.use((_req, res) => res.status(404).json({ error: "Not found" }));

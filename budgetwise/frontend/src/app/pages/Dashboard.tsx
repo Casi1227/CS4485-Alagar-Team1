@@ -150,7 +150,9 @@ export function Dashboard() {
             </div>
             <h2 className="text-xl font-semibold text-white">AI-Powered Budget Recommendations</h2>
           </div>
-          <AIRecommendations />
+          {/* Pass the current dashboard month and year to AIRecommendations */}
+          {/* This ensures AI recommendations match the displayed dashboard data */}
+          <AIRecommendations month={data?.month} year={data?.year} />
         </div>
       </div>
     </div>

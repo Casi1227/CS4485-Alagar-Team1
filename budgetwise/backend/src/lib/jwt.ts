@@ -4,7 +4,9 @@ import { env } from "../config/env.js";
 export type JwtPayload = { sub: string; email: string };
 
 export function signAccessToken(payload: JwtPayload) {
-  return jwt.sign(payload, env.JWT_SECRET, { expiresIn: env.JWT_EXPIRES_IN });
+  // Cast keeps runtime behavior the same while satisfying jsonwebtoken's strict union type.
+  const expiresIn = env.JWT_EXPIRES_IN as jwt.SignOptions["expiresIn"];
+  return jwt.sign(payload, env.JWT_SECRET, { expiresIn });
 }
 
 export function verifyAccessToken(token: string) {
