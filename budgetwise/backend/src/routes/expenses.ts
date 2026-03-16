@@ -5,6 +5,7 @@ import { createExpenseSchema, updateExpenseSchema } from "../validators/expenseS
 
 /**
  * R-102: CRUD expenses with backdating (date field).
+ * Now supports INCOME as well via `type`.
  */
 export const expensesRouter = Router();
 
@@ -33,15 +34,18 @@ expensesRouter.post("/", authRequired, async (req: AuthedRequest, res) => {
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
   const userId = req.user!.id;
+
   const created = await prisma.expense.create({
     data: {
       userId,
       amount: parsed.data.amount,
       category: parsed.data.category,
+      type: parsed.data.type ?? "EXPENSE",
       date: new Date(parsed.data.date),
       note: parsed.data.note,
     },
   });
+
   res.status(201).json({ expense: created });
 });
 
@@ -52,7 +56,6 @@ expensesRouter.put("/:id", authRequired, async (req: AuthedRequest, res) => {
   const userId = req.user!.id;
   const id = req.params.id;
 
-  // Ensure user owns expense
   const existing = await prisma.expense.findUnique({ where: { id } });
   if (!existing || existing.userId !== userId) return res.status(404).json({ error: "Expense not found" });
 
@@ -61,10 +64,12 @@ expensesRouter.put("/:id", authRequired, async (req: AuthedRequest, res) => {
     data: {
       amount: parsed.data.amount,
       category: parsed.data.category,
+      type: parsed.data.type,
       date: parsed.data.date ? new Date(parsed.data.date) : undefined,
       note: parsed.data.note,
     },
   });
+
   res.json({ expense: updated });
 });
 

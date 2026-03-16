@@ -5,14 +5,18 @@ import { Sparkles, DollarSign, TrendingUp, Lightbulb, ChevronRight, Check } from
 import { apiJson } from '../lib/api';
 
 const categoryOptions = [
-  { name: 'Food & Dining', icon: '🍔', suggestedPercent: 25, color: 'bg-orange-100 text-orange-600' },
-  { name: 'Transportation', icon: '🚗', suggestedPercent: 15, color: 'bg-blue-100 text-blue-600' },
-  { name: 'Books & Supplies', icon: '📚', suggestedPercent: 10, color: 'bg-green-100 text-green-600' },
-  { name: 'Entertainment', icon: '🎮', suggestedPercent: 10, color: 'bg-purple-100 text-purple-600' },
-  { name: 'Personal Care', icon: '💇', suggestedPercent: 8, color: 'bg-pink-100 text-pink-600' },
-  { name: 'Health & Fitness', icon: '💪', suggestedPercent: 7, color: 'bg-red-100 text-red-600' },
-  { name: 'Utilities', icon: '💡', suggestedPercent: 10, color: 'bg-yellow-100 text-yellow-600' },
-  { name: 'Savings', icon: '💰', suggestedPercent: 15, color: 'bg-emerald-100 text-emerald-600' },
+  { name: 'Rent', icon: '🏠', suggestedPercent: 30, color: 'bg-slate-100 text-slate-700' },
+  { name: 'Groceries', icon: '🛒', suggestedPercent: 12, color: 'bg-lime-100 text-lime-700' },
+  { name: 'Tuition', icon: '🎓', suggestedPercent: 10, color: 'bg-cyan-100 text-cyan-700' },
+  { name: 'Food & Dining', icon: '🍔', suggestedPercent: 10, color: 'bg-orange-100 text-orange-600' },
+  { name: 'Transportation', icon: '🚗', suggestedPercent: 8, color: 'bg-blue-100 text-blue-600' },
+  { name: 'Books & Supplies', icon: '📚', suggestedPercent: 5, color: 'bg-green-100 text-green-600' },
+  { name: 'Entertainment', icon: '🎮', suggestedPercent: 5, color: 'bg-purple-100 text-purple-600' },
+  { name: 'Personal Care', icon: '💇', suggestedPercent: 5, color: 'bg-pink-100 text-pink-600' },
+  { name: 'Health & Fitness', icon: '💪', suggestedPercent: 5, color: 'bg-red-100 text-red-600' },
+  { name: 'Utilities', icon: '💡', suggestedPercent: 5, color: 'bg-yellow-100 text-yellow-600' },
+  { name: 'Savings', icon: '💰', suggestedPercent: 5, color: 'bg-emerald-100 text-emerald-600' },
+  { name: 'Other', icon: '🔧', suggestedPercent: 0, color: 'bg-gray-100 text-gray-700' },
 ];
 
 const aiInsights = [

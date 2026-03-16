@@ -22,11 +22,6 @@ export function Header() {
     setIsAddAccountMenuOpen(false);
   };
 
-  const handleSettings = () => {
-    alert('Opening settings...');
-    setIsUserMenuOpen(false);
-  };
-
   const handleSignOut = () => {
     setIsUserMenuOpen(false);
     setIsMobileMenuOpen(false);
@@ -188,13 +183,14 @@ export function Header() {
                       <div className="font-medium text-gray-900">{displayName}</div>
                       <div className="text-sm text-gray-500">{displayEmail}</div>
                     </div>
-                    <button
-                      onClick={handleSettings}
+                    <Link
+                      href="/settings"
+                      onClick={() => setIsUserMenuOpen(false)}
                       className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors"
                     >
                       <Settings className="w-5 h-5 text-gray-600" />
                       <span className="text-gray-900">Settings</span>
-                    </button>
+                    </Link>
                     <div className="border-t border-gray-100 mt-2 pt-2">
                       <button
                         onClick={handleSignOut}
@@ -319,13 +315,14 @@ export function Header() {
 
               {/* Settings & Sign Out */}
               <div className="pt-2 border-t border-gray-200 space-y-2">
-                <button
-                  onClick={handleSettings}
+                <Link
+                  href="/settings"
+                  onClick={() => setIsMobileMenuOpen(false)}
                   className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 rounded-lg transition-colors"
                 >
                   <Settings className="w-5 h-5 text-gray-600" />
                   <span className="text-gray-900">Settings</span>
-                </button>
+                </Link>
                 <button
                   onClick={handleSignOut}
                   className="w-full flex items-center gap-3 px-4 py-3 hover:bg-red-50 rounded-lg transition-colors text-red-600"

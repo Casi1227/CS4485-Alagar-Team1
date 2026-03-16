@@ -19,15 +19,23 @@ model User {
   goals        Goal[]    // Phase 2+
 }
 
+enum TransactionType {
+  EXPENSE
+  INCOME
+}
+
 model Expense {
-  id       String   @id @default(cuid())
+  id       String          @id @default(cuid())
   userId   String
   amount   Float
-  category String   // Rent, Groceries, Tuition, etc.
-  date     DateTime // Supports backdating
+  category String
+  type     TransactionType @default(EXPENSE)
+  date     DateTime
   note     String?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, date])
 }
 
 model Budget {

@@ -21,10 +21,17 @@ authRouter.post("/register", async (req, res) => {
   if (existing) return res.status(409).json({ error: "Email already in use" });
 
   const passwordHash = await bcrypt.hash(password, PASSWORD_HASH_SALT);
-  const user = await prisma.user.create({ data: { email, passwordHash, name } });
+
+  const user = await prisma.user.create({
+    data: { email, passwordHash, name },
+  });
 
   const token = signAccessToken({ sub: user.id, email: user.email });
-  res.status(201).json({ token, user: { id: user.id, email: user.email, name: user.name } });
+
+  res.status(201).json({
+    token,
+    user: { id: user.id, email: user.email, name: user.name },
+  });
 });
 
 authRouter.post("/login", async (req, res) => {
@@ -40,29 +47,40 @@ authRouter.post("/login", async (req, res) => {
   if (!ok) return res.status(401).json({ error: "Invalid credentials" });
 
   const token = signAccessToken({ sub: user.id, email: user.email });
-  res.json({ token, user: { id: user.id, email: user.email, name: user.name } });
+
+  res.json({
+    token,
+    user: { id: user.id, email: user.email, name: user.name },
+  });
 });
 
 authRouter.post("/resetPassword", async (req, res) => {
-	const parsed = resetPasswordSchema.safeParse(req.body);
-	if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  const parsed = resetPasswordSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
-	const { email, password } = parsed.data;
+  const { email, password } = parsed.data;
 
-	const userId = await prisma.user.findUnique({
-		where: { email },
-		select: { id: true },
-	});
-	if (!userId) return res.status(401).json({ error: "Invalid credentials" });
+  const existingUser = await prisma.user.findUnique({
+    where: { email },
+  });
 
-	const passwordHash = await bcrypt.hash(password, PASSWORD_HASH_SALT);
-	const user = await prisma.user.update({
-		where: { id: userId },
-		date: { passwordHash },
-	});
+  if (!existingUser) {
+    return res.status(404).json({ error: "User not found" });
+  }
 
-	const token = signAccessToken({ sub: user.id, email: user.email });
-	res.json({ token, user: { id: user.id, email: user.email, name: user.name } });
+  const passwordHash = await bcrypt.hash(password, PASSWORD_HASH_SALT);
+
+  const user = await prisma.user.update({
+    where: { email },
+    data: { passwordHash },
+  });
+
+  const token = signAccessToken({ sub: user.id, email: user.email });
+
+  res.json({
+    token,
+    user: { id: user.id, email: user.email, name: user.name },
+  });
 });
 
 /**
@@ -71,9 +89,11 @@ authRouter.post("/resetPassword", async (req, res) => {
  */
 authRouter.get("/me", authRequired, async (req: AuthedRequest, res) => {
   const userId = req.user!.id;
+
   const user = await prisma.user.findUnique({
     where: { id: userId },
     select: { id: true, email: true, name: true, createdAt: true },
   });
+
   res.json({ user });
 });

@@ -10,6 +10,7 @@
     "lint": "eslint ."
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "@prisma/client": "6.19.2",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
@@ -29,8 +30,8 @@
     "@typescript-eslint/eslint-plugin": "^7.17.0",
     "@typescript-eslint/parser": "^7.17.0",
     "eslint": "^8.57.1",
+    "prisma": "6.19.2",
     "tsx": "^4.16.2",
-    "typescript": "^5.5.4",
-    "prisma": "6.19.2"
+    "typescript": "^5.5.4"
   }
 }

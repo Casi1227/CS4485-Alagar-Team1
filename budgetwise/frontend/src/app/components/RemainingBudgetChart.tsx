@@ -29,14 +29,20 @@ export function RemainingBudgetChart({ data }: RemainingBudgetChartProps) {
       <BarChart data={remainingData} layout="vertical">
         <CartesianGrid strokeDasharray="3 3" />
         <XAxis type="number" tickFormatter={(v) => `$${v}`} />
-        <YAxis dataKey="category" type="category" width={150} />
+        <YAxis
+          dataKey="category"
+          type="category"
+          width={0}
+          tick={false}
+          axisLine={false}
+        />
         <Tooltip
           formatter={(value: number) => [`$${value.toFixed(2)}`, undefined]}
           contentStyle={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: '8px' }}
         />
         <Legend />
-        <Bar dataKey="spent" stackId="a" fill="#8884d8" name="Spent" />
-        <Bar dataKey="remaining" stackId="a" name="Remaining" fill="#82ca9d" />
+        <Bar dataKey="spent" fill="#8884d8" name="Spent" />
+        <Bar dataKey="remaining" name="Remaining" fill="#82ca9d" />
       </BarChart>
     </ResponsiveContainer>
   );

@@ -1,3 +1,5 @@
+'use client';
+
 import { useState } from 'react';
 import { CreditCard, Mail, Lock, Eye, EyeOff, TrendingUp, PieChart, DollarSign } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -22,7 +24,6 @@ export function Login() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 flex items-center justify-center p-6">
       <div className="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
-        {/* Left Side - Branding */}
         <div className="hidden lg:block">
           <div className="space-y-6">
             <div className="flex items-center gap-3">
@@ -40,7 +41,7 @@ export function Login() {
                 Take Control of Your Student Finances
               </h2>
               <p className="text-lg text-gray-600">
-                Track spending, create smart budgets, and achieve your financial goals with AI-powered insights.
+                Track spending, create smart budgets, and achieve your financial goals with AI powered insights.
               </p>
             </div>
 
@@ -78,10 +79,8 @@ export function Login() {
           </div>
         </div>
 
-        {/* Right Side - Login Form */}
         <div className="w-full max-w-md mx-auto">
           <div className="bg-white rounded-2xl shadow-xl border border-gray-200 p-8">
-            {/* Mobile Logo */}
             <div className="lg:hidden flex items-center gap-3 mb-8">
               <div className="p-2 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-xl">
                 <CreditCard className="w-8 h-8 text-white" />
@@ -104,7 +103,6 @@ export function Login() {
             ) : null}
 
             <form onSubmit={handleSubmit} className="space-y-6">
-              {/* Email Input */}
               <div>
                 <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
                   Email Address
@@ -123,7 +121,6 @@ export function Login() {
                 </div>
               </div>
 
-              {/* Password Input */}
               <div>
                 <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
                   Password
@@ -144,16 +141,11 @@ export function Login() {
                     onClick={() => setShowPassword(!showPassword)}
                     className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
                   >
-                    {showPassword ? (
-                      <EyeOff className="w-5 h-5" />
-                    ) : (
-                      <Eye className="w-5 h-5" />
-                    )}
+                    {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                   </button>
                 </div>
               </div>
 
-              {/* Remember Me & Forgot Password */}
               <div className="flex items-center justify-between">
                 <label className="flex items-center">
                   <input
@@ -162,15 +154,14 @@ export function Login() {
                   />
                   <span className="ml-2 text-sm text-gray-600">Remember me</span>
                 </label>
-                <button
-                  type="button"
-                  className="text-sm text-indigo-600 hover:text-indigo-700 font-medium"
+               <a
+                href="/forgot-password"
+            className="text-sm text-indigo-600 hover:text-indigo-700 font-medium hover:underline"
                 >
-                  Forgot password?
-                </button>
+              Forgot password?
+              </a>
               </div>
 
-              {/* Submit Button */}
               <button
                 type="submit"
                 className="w-full py-3 bg-gradient-to-r from-purple-500 to-indigo-600 text-white font-semibold rounded-lg hover:from-purple-600 hover:to-indigo-700 transition-all shadow-lg hover:shadow-xl"
@@ -179,11 +170,12 @@ export function Login() {
               </button>
             </form>
 
-            {/* Sign Up Link */}
             <div className="mt-6 text-center">
               <p className="text-sm text-gray-600">
                 Don't have an account?{' '}
-                <a href="/register" className="text-indigo-600 hover:text-indigo-700 font-medium">Sign up for free</a>
+                <a href="/register" className="text-indigo-600 hover:text-indigo-700 font-medium">
+                  Sign up for free
+                </a>
               </p>
             </div>
           </div>
