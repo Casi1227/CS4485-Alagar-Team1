@@ -335,6 +335,58 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /ai/budget-comparison:
+    get:
+      tags: [AI]
+      summary: Generate AI optimized category spend comparison for a month
+      description: >
+        Server side call to Groq that returns per-category current spend versus
+        recommended spend for the dashboard comparison chart.
+      parameters:
+        - in: query
+          name: month
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 12
+          description: Month number, defaults to current month.
+        - in: query
+          name: year
+          required: false
+          schema:
+            type: integer
+          description: Year number, defaults to current year.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BudgetComparisonResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          description: AI output failed schema validation after normalization attempts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: AI provider error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: AI feature unavailable due to missing provider configuration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
   securitySchemes:
     bearerAuth:
@@ -702,6 +754,19 @@ components:
           type: string
           description: Optional related category.
 
+    BudgetComparisonResponse:
+      type: object
+      required: [items, generatedAt]
+      properties:
+        items:
+          type: array
+          description: Data for the bar chart comparing current spending vs AI recommended.
+          items:
+            $ref: "#/components/schemas/AiComparisonItem"
+        generatedAt:
+          type: string
+          format: date-time
+
     AiBudgetComparison:
       type: object
       required: [items]
@@ -714,15 +779,15 @@ components:
 
     AiComparisonItem:
       type: object
-      required: [category, currentSpendCents, recommendedSpendCents]
+      required: [category, currentSpend, recommendedSpend]
       properties:
         category:
           type: string
-        currentSpendCents:
-          type: integer
+        currentSpend:
+          type: number
           minimum: 0
-        recommendedSpendCents:
-          type: integer
+        recommendedSpend:
+          type: number
           minimum: 0
 
     AiActionItem:

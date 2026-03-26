@@ -3,18 +3,6 @@ import { TrendingDown, TrendingUp, Sparkles, CheckCircle, Loader2 } from 'lucide
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { apiJson } from '../lib/api';
 
-// ===== Hardcoded Data (Kept for future AI feature implementation) =====
-// These constants are placeholder data for the chart section.
-// The bar chart section will be replaced with real AI data in a future feature phase.
-// For now, we keep them hardcoded so the chart displays properly on the dashboard.
-const recommendationData = [
-  { category: 'Food & Dining', current: 320, recommended: 280, status: 'reduce' },
-  { category: 'Transportation', current: 85, recommended: 85, status: 'good' },
-  { category: 'Entertainment', current: 125, recommended: 100, status: 'reduce' },
-  { category: 'Personal Care', current: 60, recommended: 60, status: 'good' },
-  { category: 'Other', current: 40, recommended: 80, status: 'increase' },
-];
-
 // ===== Type Definitions =====
 /**
  * Recommendation type matches the backend schema from aiInsights.ts
@@ -29,6 +17,17 @@ interface Recommendation {
 
 interface AIResponse {
   recommendations: Recommendation[];
+  generatedAt: string;
+}
+
+interface ComparisonItem {
+  category: string;
+  currentSpend: number;
+  recommendedSpend: number;
+}
+
+interface AIComparisonResponse {
+  items: ComparisonItem[];
   generatedAt: string;
 }
 
@@ -65,22 +64,20 @@ function getIconAndColorForType(type: 'reduce' | 'keepDoing' | 'spendMore') {
  *   - year (optional): Year number, defaults to current year
  * 
  * The component displays:
- * 1. Hardcoded Chart showing spending vs recommended amounts
+ * 1. Dynamic Chart showing current spending vs AI recommended amounts
  * 2. Dynamic "Recommended Actions" - fetched from /api/ai/dashboard-insights
- * 
- * Design Decision: Only the "Recommended Actions" section is dynamic.
- * The chart remains hardcoded because:
- * - Chart data requires complex spend analysis (future feature)
- * - This keeps the initial implementation focused and testable
  */
 export function AIRecommendations({ month, year }: { month?: number; year?: number }) {
   // ===== State Management =====
   // Store the fetched recommendations from the API
   const [recommendations, setRecommendations] = useState<Recommendation[] | null>(null);
+  const [comparisonItems, setComparisonItems] = useState<ComparisonItem[]>([]);
   // Track loading state while fetching from API
   const [loading, setLoading] = useState(true);
+  const [chartLoading, setChartLoading] = useState(true);
   // Track error state if API call fails
   const [error, setError] = useState<string | null>(null);
+  const [chartError, setChartError] = useState<string | null>(null);
 
   // ===== Effect: Fetch Recommendations =====
   /**
@@ -99,7 +96,9 @@ export function AIRecommendations({ month, year }: { month?: number; year?: numb
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
+    setChartLoading(true);
     setError(null);
+    setChartError(null);
 
     // Use current month/year if not provided
     const currentDate = new Date();
@@ -130,6 +129,26 @@ export function AIRecommendations({ month, year }: { month?: number; year?: numb
         }
       });
 
+    // Fetch comparison data for chart bars from the AI endpoint
+    apiJson(`/api/ai/budget-comparison?month=${queryMonth}&year=${queryYear}`)
+      .then((res: AIComparisonResponse) => {
+        if (!cancelled) {
+          setComparisonItems(Array.isArray(res.items) ? res.items : []);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          const errorMessage =
+            err instanceof Error ? err.message : 'Failed to load AI comparison data';
+          setChartError(errorMessage);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setChartLoading(false);
+        }
+      });
+
     // Cleanup: mark as cancelled if component unmounts
     return () => {
       cancelled = true;
@@ -138,25 +157,53 @@ export function AIRecommendations({ month, year }: { month?: number; year?: numb
 
   return (
     <div className="space-y-6">
-      {/* Recommended vs Current Spending Chart - Hardcoded for now */}
+      {/* Recommended vs Current Spending Chart */}
       <div className="bg-white/10 backdrop-blur-sm rounded-lg p-6 border border-white/20">
         <h3 className="font-semibold text-white mb-4 flex items-center gap-2">
           <Sparkles className="w-5 h-5" />
           AI-Optimized Budget Comparison
         </h3>
-        <ResponsiveContainer width="100%" height={300}>
-          <BarChart data={recommendationData}>
-            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
-            <XAxis dataKey="category" tick={{ fill: 'white' }} angle={-15} textAnchor="end" height={80} />
-            <YAxis tick={{ fill: 'white' }} />
-            <Tooltip 
-              contentStyle={{ backgroundColor: '#e5e7eb', border: 'none', borderRadius: '8px' }}
-              formatter={(value) => `$${value}`}
-            />
-            <Bar dataKey="current" fill="#3b82f6" name="Current Spending" />
-            <Bar dataKey="recommended" fill="#10b981" name="AI Recommended" />
-          </BarChart>
-        </ResponsiveContainer>
+
+        {chartLoading && (
+          <div className="flex items-center justify-center py-8">
+            <Loader2 className="w-6 h-6 text-white animate-spin" />
+            <span className="ml-2 text-white/80">Generating chart data...</span>
+          </div>
+        )}
+
+        {chartError && !chartLoading && (
+          <div className="space-y-2 p-4 bg-red-500/10 border border-red-500/20 rounded-lg">
+            <p className="text-red-400 text-sm">Unable to load chart data: {chartError}</p>
+          </div>
+        )}
+
+        {!chartLoading && !chartError && comparisonItems.length > 0 && (
+          <ResponsiveContainer width="100%" height={300}>
+            <BarChart
+              data={comparisonItems.map((item) => ({
+                category: item.category,
+                current: item.currentSpend,
+                recommended: item.recommendedSpend,
+              }))}
+            >
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+              <XAxis dataKey="category" tick={{ fill: 'white' }} angle={-15} textAnchor="end" height={80} />
+              <YAxis tick={{ fill: 'white' }} />
+              <Tooltip
+                contentStyle={{ backgroundColor: '#e5e7eb', border: 'none', borderRadius: '8px' }}
+                formatter={(value: number | string) =>
+                  typeof value === 'number' ? `$${value.toFixed(2)}` : `$${value}`
+                }
+              />
+              <Bar dataKey="current" fill="#3b82f6" name="Current Spending" />
+              <Bar dataKey="recommended" fill="#10b981" name="AI Recommended" />
+            </BarChart>
+          </ResponsiveContainer>
+        )}
+
+        {!chartLoading && !chartError && comparisonItems.length === 0 && (
+          <p className="text-white/60 text-sm">No category data available for comparison.</p>
+        )}
         
         <div className="mt-4 flex items-center gap-4 text-sm text-white/80">
           <div className="flex items-center gap-2">
