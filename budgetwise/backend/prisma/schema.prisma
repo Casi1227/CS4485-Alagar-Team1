@@ -8,15 +8,16 @@ datasource db {
 }
 
 model User {
-  id           String    @id @default(cuid())
-  email        String    @unique
+  id           String   @id @default(cuid())
+  email        String   @unique
   passwordHash String
   name         String
-  createdAt    DateTime  @default(now())
+  createdAt    DateTime @default(now())
 
-  budgets      Budget[]
-  expenses     Expense[]
-  goals        Goal[]    // Phase 2+
+  budgets               Budget[]
+  expenses              Expense[]
+  goals                 Goal[] // Phase 2+
+  resetPasswordRequests ResetPasswordRequest?
 }
 
 enum TransactionType {
@@ -39,14 +40,14 @@ model Expense {
 }
 
 model Budget {
-  id         String  @id @default(cuid())
+  id         String @id @default(cuid())
   userId     String
   month      Int
   year       Int
-  totalLimit Float   // The "Envelope"
-  category   String  // e.g., "Food"
-  allocated  Float   // Portion of totalLimit
-  percent    Float   @default(0)
+  totalLimit Float // The "Envelope"
+  category   String // e.g., "Food"
+  allocated  Float // Portion of totalLimit
+  percent    Float  @default(0)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -59,6 +60,14 @@ model Goal {
   userId    String
   title     String
   target    Float
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model ResetPasswordRequest {
+  userId    String   @id
+  keyHash   String
   createdAt DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
