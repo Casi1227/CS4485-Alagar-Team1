@@ -1,5 +1,5 @@
+import Groq from "groq-sdk";
 import { z } from "zod";
-import { GoogleGenerativeAI } from "@google/generative-ai";
 import { env } from "../config/env.js";
 
 /**
@@ -10,7 +10,7 @@ import { env } from "../config/env.js";
 
 /**
  * Input schema: Describes a user's spending and budget by category.
- * Used to build the prompt for Gemini.
+ * Used to build the prompt for Groq.
  */
 export const categorySpendSummarySchema = z.object({
   category: z.string().describe("The spending category (e.g., 'Food & Dining')"),
@@ -21,19 +21,15 @@ export const categorySpendSummarySchema = z.object({
 export type CategorySpendSummary = z.infer<typeof categorySpendSummarySchema>;
 
 /**
- * Output schema: A single recommendation from Gemini.
+ * Output schema: A single recommendation from Groq.
  * We request EXACTLY 3 recommendations: one for each type.
  */
 export const recommendationSchema = z.object({
-  // Type of recommendation: what the user should do with spending in a category
   type: z
     .enum(["reduce", "keepDoing", "spendMore"])
     .describe("Whether the user should reduce, keep, or increase spending in this category"),
-  // The category this recommendation applies to
   category: z.string().describe("The spending category this recommendation applies to"),
-  // A concise title for the recommendation
   title: z.string().describe("A short title summarizing the recommendation"),
-  // Detailed message explaining the recommendation
   message: z.string().describe("A detailed message explaining why and how to follow this recommendation"),
 });
 
@@ -41,7 +37,6 @@ export type Recommendation = z.infer<typeof recommendationSchema>;
 
 /**
  * Full response schema: exactly 3 recommendations + metadata.
- * We use .length(3) to enforce exactly 3 items (reduce, keepDoing, spendMore).
  * This contract is critical for the frontend which expects exactly 3 cards.
  */
 export const dashboardAiResponseSchema = z.object({
@@ -50,6 +45,45 @@ export const dashboardAiResponseSchema = z.object({
 });
 
 export type DashboardAiResponse = z.infer<typeof dashboardAiResponseSchema>;
+
+/**
+ * Output schema for the dashboard bar chart comparison.
+ * Each item maps a category's current spend to an AI-recommended spend amount.
+ */
+export const aiComparisonItemSchema = z.object({
+  category: z.string().min(1),
+  currentSpend: z.number().nonnegative(),
+  recommendedSpend: z.number().nonnegative(),
+});
+
+export const budgetComparisonResponseSchema = z.object({
+  items: z.array(aiComparisonItemSchema),
+  generatedAt: z.string().datetime(),
+});
+
+export type BudgetComparisonResponse = z.infer<typeof budgetComparisonResponseSchema>;
+
+type OutputMode = "strict-json-schema" | "best-effort-json-schema" | "json-object" | "no-format";
+
+const STRICT_JSON_SCHEMA_MODELS = new Set(["openai/gpt-oss-20b", "openai/gpt-oss-120b"]);
+
+function trimSpendingData(spendingData: CategorySpendSummary[]): CategorySpendSummary[] {
+  if (spendingData.length <= env.GROQ_MAX_INPUT_CATEGORIES) {
+    return spendingData;
+  }
+
+  const sorted = [...spendingData].sort((a, b) => b.spent - a.spent);
+  const kept = sorted.slice(0, env.GROQ_MAX_INPUT_CATEGORIES - 1);
+  const overflow = sorted.slice(env.GROQ_MAX_INPUT_CATEGORIES - 1);
+
+  const other: CategorySpendSummary = {
+    category: "Other",
+    spent: overflow.reduce((sum, item) => sum + item.spent, 0),
+    allocated: overflow.reduce((sum, item) => sum + item.allocated, 0),
+  };
+
+  return [...kept, other];
+}
 
 /**
  * Detects provider errors that indicate a model is unavailable for this key/tier/region.
@@ -63,221 +97,417 @@ function isModelAvailabilityError(message: string): boolean {
         normalized.includes("not supported") ||
         normalized.includes("unavailable") ||
         normalized.includes("deprecated"))) ||
-    normalized.includes("404 not found") ||
+    normalized.includes("404") ||
     normalized.includes("permission denied") ||
     normalized.includes("does not have access") ||
-    normalized.includes("free tier") ||
-    normalized.includes("not allowed")
+    normalized.includes("not allowed") ||
+    normalized.includes("rate limit") ||
+    normalized.includes("too many requests") ||
+    normalized.includes("429") ||
+    normalized.includes("capacity")
   );
 }
 
 /**
- * ===== Gemini Integration =====
- * Calls Google's Gemini API to generate AI-powered budget recommendations.
+ * Detects unsupported structured output request formatting for a given model.
  */
+function isStructuredOutputCompatibilityError(message: string): boolean {
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes("response_format") ||
+    normalized.includes("json_schema") ||
+    normalized.includes("structured output") ||
+    normalized.includes("strict")
+  );
+}
+
+function isJsonGenerationValidationError(message: string): boolean {
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes("json_validate_failed") ||
+    normalized.includes("failed to validate json")
+  );
+}
+
+function parseMessageContent(content: unknown): string {
+  if (typeof content === "string") {
+    return content;
+  }
+
+  if (Array.isArray(content)) {
+    return content
+      .map((part) => {
+        if (typeof part === "string") {
+          return part;
+        }
+        if (part && typeof part === "object" && "text" in part && typeof (part as { text?: unknown }).text === "string") {
+          return (part as { text: string }).text;
+        }
+        return "";
+      })
+      .join("");
+  }
+
+  return "";
+}
+
+function buildDashboardInsightsResponseFormat(mode: OutputMode): Record<string, unknown> {
+  if (mode === "json-object") {
+    return { type: "json_object" };
+  }
+
+  return {
+    type: "json_schema",
+    json_schema: {
+      name: "dashboard_ai_response",
+      strict: mode === "strict-json-schema",
+      schema: {
+        type: "object",
+        properties: {
+          recommendations: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                type: { type: "string", enum: ["reduce", "keepDoing", "spendMore"] },
+                category: { type: "string" },
+                title: { type: "string" },
+                message: { type: "string" },
+              },
+              required: ["type", "category", "title", "message"],
+              additionalProperties: false,
+            },
+            minItems: 3,
+            maxItems: 3,
+          },
+          generatedAt: { type: "string" },
+        },
+        required: ["recommendations", "generatedAt"],
+        additionalProperties: false,
+      },
+    },
+  };
+}
+
+function buildBudgetComparisonResponseFormat(mode: OutputMode): Record<string, unknown> {
+  if (mode === "json-object") {
+    return { type: "json_object" };
+  }
+
+  return {
+    type: "json_schema",
+    json_schema: {
+      name: "budget_comparison_response",
+      strict: mode === "strict-json-schema",
+      schema: {
+        type: "object",
+        properties: {
+          items: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                category: { type: "string" },
+                currentSpend: { type: "number", minimum: 0 },
+                recommendedSpend: { type: "number", minimum: 0 },
+              },
+              required: ["category", "currentSpend", "recommendedSpend"],
+              additionalProperties: false,
+            },
+          },
+          generatedAt: { type: "string" },
+        },
+        required: ["items", "generatedAt"],
+        additionalProperties: false,
+      },
+    },
+  };
+}
 
 /**
- * Generates dashboard insights by calling Gemini using a configured model and fallbacks.
- *
- * Design Decision: Why fallback model chain?
- * - Free tier access can vary by account and region.
- * - We try models in a strict order and continue when model access is unavailable.
- * - This avoids hard failure when a single model is not accessible.
- *
- * Design Decision: Why responseMimeType: "application/json"?
- * - Forces Gemini to return valid JSON, not raw text
- * - Eliminates markdown code blocks, unrelated text, or hallucinated explanations
- * - Ensures we can parse + validate with Zod predictably
- *
- * @param spendingData - Array of category summaries (spent vs allocated per category)
- * @param month - Month number (1-12) for context in the prompt
- * @param year - Year for context in the prompt
- * @returns Promise<DashboardAiResponse> - Exactly 3 recommendations + timestamp
- * @throws Error if Gemini API fails, returns invalid JSON, or fails Zod validation
+ * ===== Groq Integration =====
+ * Calls Groq's Chat Completions API to generate AI-powered budget recommendations.
  */
 export async function generateDashboardInsights(
   spendingData: CategorySpendSummary[],
   month: number,
   year: number
 ): Promise<DashboardAiResponse> {
-  // Check if API key is configured
-  if (!env.GEMINI_API_KEY) {
-    // Return a sentinel indicating the feature is unavailable
-    // The calling route will convert this to a 503 response
-    throw new Error("GEMINI_API_KEY not configured");
+  if (!env.GROQ_API_KEY) {
+    throw new Error("GROQ_API_KEY not configured");
   }
 
-  // Initialize the Gemini client with the API key
-  const client = new GoogleGenerativeAI(env.GEMINI_API_KEY);
+  const client = new Groq({ apiKey: env.GROQ_API_KEY });
 
-  // Strict model order: configured/default first, then requested fallbacks.
-  const modelCandidates = [
-    env.GEMINI_MODEL,
-    "gemini-2.5-flash-lite",
-    "gemini-3.1-flash-lite",
-    "gemini-3-flash",
-  ];
+  const modelCandidates = [env.GROQ_MODEL_PRIMARY, env.GROQ_MODEL_FALLBACK_1, env.GROQ_MODEL_FALLBACK_2];
   const uniqueModelCandidates = Array.from(new Set(modelCandidates));
 
-  // Shared generation config across all candidate models.
-  const generationConfig = {
-    responseMimeType: "application/json",
-    responseSchema: {
-      type: "object",
-      properties: {
-        recommendations: {
-          type: "array",
-          items: {
-            type: "object",
-            properties: {
-              type: { type: "string", enum: ["reduce", "keepDoing", "spendMore"] },
-              category: { type: "string" },
-              title: { type: "string" },
-              message: { type: "string" },
-            },
-            required: ["type", "category", "title", "message"],
-          },
-          minItems: 3,
-          maxItems: 3,
-        },
-        generatedAt: { type: "string" },
-      },
-      required: ["recommendations", "generatedAt"],
-    },
-  };
+  const trimmedSpendingData = trimSpendingData(spendingData);
 
-  // Build the prompt from spending data
-  // We provide specific numbers so Gemini can give targeted, data-driven recommendations
-  const categoryBreakdown = spendingData
+  const categoryBreakdown = trimmedSpendingData
     .map(
       (item) =>
-        `- ${item.category}: $${item.spent.toFixed(2)} spent of $${item.allocated.toFixed(2)} allocated (${
-          item.allocated > 0 ? ((item.spent / item.allocated) * 100).toFixed(1) : "N/A"
-        }% of budget)`
+        `- ${item.category}: $${item.spent.toFixed(2)} spent of $${item.allocated.toFixed(2)} allocated (${item.allocated > 0 ? ((item.spent / item.allocated) * 100).toFixed(1) : "N/A"}% of budget)`
     )
     .join("\n");
 
-  const userPrompt = `
-You are a personal finance advisor for a college student. Analyze the following spending data for ${new Date(
-    year,
-    month - 1
-  ).toLocaleDateString("en-US", { month: "long", year: "numeric" })} and provide exactly 3 recommendations:
+  const monthLabel = new Date(year, month - 1).toLocaleDateString("en-US", { month: "long", year: "numeric" });
 
-Spending Summary:
-${categoryBreakdown}
-
-Generate exactly 3 recommendations in this format:
-1. One recommendation where the student should REDUCE spending (type: "reduce")
-2. One recommendation where the student is doing WELL and should KEEP their current habits (type: "keepDoing")
-3. One recommendation where the student could INCREASE spending or take a different approach (type: "spendMore")
-
-Each recommendation must include:
-- type: One of "reduce", "keepDoing", or "spendMore"
-- category: The spending category it applies to
-- title: A short, actionable title (max 50 characters)
-- message: A detailed message with specific, practical advice (1-2 sentences)
-
-Return ONLY valid JSON with this structure:
-{
-  "recommendations": [
-    { "type": "...", "category": "...", "title": "...", "message": "..." },
-    { "type": "...", "category": "...", "title": "...", "message": "..." },
-    { "type": "...", "category": "...", "title": "...", "message": "..." }
-  ],
-  "generatedAt": "ISO 8601 timestamp"
-}
-
-Ensure you return exactly 3 recommendations with one of each type.
-`;
+  const messages = [
+    {
+      role: "system",
+      content:
+        "You are a personal finance advisor. Return compact JSON only.",
+    },
+    {
+      role: "user",
+      content: `Month: ${monthLabel}.\nSpending:\n${categoryBreakdown}\n\nReturn exactly 3 recommendations, one each type: reduce, keepDoing, spendMore.\nEach item: {type, category, title<=50 chars, message<=140 chars}. JSON only.`,
+    },
+  ] as const;
 
   let sawAvailabilityFailure = false;
+  let lastError: unknown = null;
 
   for (const modelName of uniqueModelCandidates) {
-    try {
-      console.log(`[AI] Trying model: ${modelName}`);
+    const candidateModes: OutputMode[] = ["json-object", "no-format"];
 
-      const model = client.getGenerativeModel({
-        model: modelName,
-        // Cast is required because SDK schema typings are stricter than runtime API accepts.
-        generationConfig: generationConfig as any,
-      });
-
-      // Call Gemini with the JSON schema constraint
-      const response = await model.generateContent(userPrompt);
-      const responseText = response.response.text();
-
-      // DEBUG: Log the raw response from Gemini for troubleshooting
-      console.log("[AI] Raw Gemini response:", responseText);
-
-      // Sometimes Gemini wraps JSON in markdown code blocks even with responseMimeType set
-      // Extract JSON if it's wrapped in markdown: ```json ... ``` or just ``` ... ```
-      let jsonText = responseText.trim();
-      const jsonMatch = jsonText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-      if (jsonMatch) {
-        console.log("[AI] Extracted JSON from markdown code block");
-        jsonText = jsonMatch[1].trim();
-      }
-
-      // Parse the JSON response
-      // Gemini should return valid JSON due to responseMimeType constraint, but we parse defensively
-      let parsed;
+    for (const outputMode of candidateModes) {
       try {
-        parsed = JSON.parse(jsonText);
-      } catch (parseError) {
-        console.error("[AI] Failed to parse JSON. Response text was:", jsonText);
-        throw parseError;
+        console.log(`[AI] Trying Groq model: ${modelName} with mode: ${outputMode}`);
+
+        const completionConfig: Record<string, unknown> = {
+          model: modelName,
+          messages: messages as any,
+          temperature: 0,
+          max_tokens: env.GROQ_MAX_TOKENS_INSIGHTS,
+        };
+
+        if (outputMode !== "no-format") {
+          completionConfig.response_format = buildDashboardInsightsResponseFormat(outputMode) as any;
+        }
+
+        const completion = await client.chat.completions.create(completionConfig as any);
+
+        const responseText = parseMessageContent(completion.choices[0]?.message?.content).trim();
+        console.log("[AI] Raw Groq response:", responseText);
+
+        let jsonText = responseText;
+        const jsonMatch = jsonText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+        if (jsonMatch) {
+          jsonText = jsonMatch[1].trim();
+        }
+
+        const parsed = JSON.parse(jsonText);
+        const validated = dashboardAiResponseSchema.parse({
+          ...parsed,
+          generatedAt: parsed.generatedAt || new Date().toISOString(),
+        });
+
+        console.log(`[AI] Successfully generated recommendations with model: ${modelName} (${outputMode})`);
+        return validated;
+      } catch (error) {
+        lastError = error;
+        const message = error instanceof Error ? error.message : String(error);
+
+        if (isModelAvailabilityError(message)) {
+          sawAvailabilityFailure = true;
+          console.warn(`[AI] Groq model unavailable: ${modelName}. Error: ${message}`);
+          break;
+        }
+
+        if (isStructuredOutputCompatibilityError(message) && outputMode !== "json-object") {
+          console.warn(`[AI] Structured output mode unsupported for ${modelName} (${outputMode}). Falling back to json-object.`);
+          continue;
+        }
+
+        if (isJsonGenerationValidationError(message)) {
+          console.warn(`[AI] JSON generation failed for ${modelName} (${outputMode}). Trying next mode/model.`);
+          continue;
+        }
+
+        if (error instanceof SyntaxError) {
+          lastError = new Error(`Groq returned invalid JSON: ${error.message}`);
+          console.warn(`[AI] Invalid JSON for ${modelName} (${outputMode}). Trying next mode/model.`);
+          continue;
+        }
+
+        if (error instanceof z.ZodError) {
+          const validationErrors = error.errors
+            .map((e) => `${e.path.join(".")}: ${e.message} (code: ${e.code})`)
+            .join("; ");
+          lastError = new Error(`Groq response failed validation: ${validationErrors}`);
+          console.warn(`[AI] Response schema validation failed for ${modelName} (${outputMode}). Trying next mode/model.`);
+          continue;
+        }
+
+        throw error;
       }
-
-      // DEBUG: Log parsed structure before validation
-      console.log("[AI] Parsed structure:", JSON.stringify(parsed, null, 2));
-
-      // Validate against our schema
-      // This ensures the response matches expectations and throws if it doesn't
-      const validated = dashboardAiResponseSchema.parse({
-        ...parsed,
-        // Ensure we have a timestamp (set current time if missing)
-        generatedAt: parsed.generatedAt || new Date().toISOString(),
-      });
-
-      console.log(`[AI] Successfully generated recommendations with model: ${modelName}`);
-      return validated;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-
-      // Retry with next model only for provider/model availability issues.
-      if (isModelAvailabilityError(message)) {
-        sawAvailabilityFailure = true;
-        console.warn(`[AI] Model unavailable for this key/tier: ${modelName}. Error: ${message}`);
-        continue;
-      }
-
-      // Provide clear error messages for parsing/validation failures.
-      if (error instanceof SyntaxError) {
-        console.error("[AI] JSON Parse Error:", error.message);
-        throw new Error(`Gemini returned invalid JSON: ${error.message}`);
-      }
-      if (error instanceof z.ZodError) {
-        // Log the specific validation errors with detailed information
-        const validationErrors = error.errors
-          .map((e) => `${e.path.join(".")}: ${e.message} (code: ${e.code})`)
-          .join("; ");
-        console.error("[AI] Validation Error:", JSON.stringify(error.errors, null, 2));
-        throw new Error(`Gemini response failed validation: ${validationErrors}`);
-      }
-
-      // Re-throw other errors (network, API errors, etc.)
-      console.error("[AI] Unexpected error:", message);
-      throw error;
     }
   }
 
   if (sawAvailabilityFailure) {
     throw new Error(
-      "No supported Gemini model is available for generateContent. Configure GEMINI_MODEL to a currently supported model ID."
+      "No supported Groq model is available for chat completions. Configure GROQ_MODEL_PRIMARY / GROQ_MODEL_FALLBACK_* to valid model IDs."
     );
   }
 
-  throw new Error("Gemini request failed before any model could return a response.");
+  if (lastError instanceof Error) {
+    throw lastError;
+  }
+
+  throw new Error("Groq request failed before any model could return a response.");
+}
+
+function normalizeCategory(category: string): string {
+  return category.trim().toLowerCase();
+}
+
+/**
+ * Generates per-category AI recommended spending amounts for the dashboard bar chart.
+ */
+export async function generateBudgetComparison(
+  spendingData: CategorySpendSummary[],
+  totalIncome: number,
+  month: number,
+  year: number,
+): Promise<BudgetComparisonResponse> {
+  if (!env.GROQ_API_KEY) {
+    throw new Error("GROQ_API_KEY not configured");
+  }
+
+  const client = new Groq({ apiKey: env.GROQ_API_KEY });
+  const modelCandidates = [env.GROQ_MODEL_PRIMARY, env.GROQ_MODEL_FALLBACK_1, env.GROQ_MODEL_FALLBACK_2];
+  const uniqueModelCandidates = Array.from(new Set(modelCandidates));
+
+  const trimmedSpendingData = trimSpendingData(spendingData);
+  const totalAllocated = trimmedSpendingData.reduce((sum, item) => sum + item.allocated, 0);
+  const totalSpent = trimmedSpendingData.reduce((sum, item) => sum + item.spent, 0);
+  const monthLabel = new Date(year, month - 1).toLocaleDateString("en-US", { month: "long", year: "numeric" });
+  const categoryBreakdown = trimmedSpendingData
+    .map((item) => `- ${item.category}: spent=$${item.spent.toFixed(2)}, allocated=$${item.allocated.toFixed(2)}`)
+    .join("\n");
+  const comparisonTokenBudget = Math.min(
+    env.GROQ_MAX_TOKENS_COMPARISON,
+    120 + trimmedSpendingData.length * 45,
+  );
+
+  const messages = [
+    {
+      role: "system",
+      content:
+        "You are a personal finance advisor. Return compact JSON only.",
+    },
+    {
+      role: "user",
+      content: `Month: ${monthLabel}.\nIncome: $${totalIncome.toFixed(2)}. Allocated: $${totalAllocated.toFixed(2)}. Spent: $${totalSpent.toFixed(2)}.\nCategories:\n${categoryBreakdown}\n\nReturn JSON only: items[] with {category,currentSpend,recommendedSpend}. Keep category labels exact. Use non-negative numbers with 2 decimals max.`,
+    },
+  ] as const;
+
+  let sawAvailabilityFailure = false;
+  let lastError: unknown = null;
+
+  for (const modelName of uniqueModelCandidates) {
+    const candidateModes: OutputMode[] = ["json-object", "no-format"];
+
+    for (const outputMode of candidateModes) {
+      try {
+        const completionConfig: Record<string, unknown> = {
+          model: modelName,
+          messages: messages as any,
+          temperature: 0,
+          max_tokens: comparisonTokenBudget,
+        };
+
+        if (outputMode !== "no-format") {
+          completionConfig.response_format = buildBudgetComparisonResponseFormat(outputMode) as any;
+        }
+
+        const completion = await client.chat.completions.create(completionConfig as any);
+
+        const responseText = parseMessageContent(completion.choices[0]?.message?.content).trim();
+        let jsonText = responseText;
+        const jsonMatch = jsonText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+        if (jsonMatch) {
+          jsonText = jsonMatch[1].trim();
+        }
+
+        const parsed = JSON.parse(jsonText);
+        const validated = budgetComparisonResponseSchema.parse({
+          ...parsed,
+          generatedAt: parsed.generatedAt || new Date().toISOString(),
+        });
+
+        const aiByCategory = new Map(
+          validated.items.map((item) => [normalizeCategory(item.category), item]),
+        );
+
+        const normalizedItems = spendingData.map((item) => {
+          const aiItemDirect = aiByCategory.get(normalizeCategory(item.category));
+          const aiItem = aiItemDirect ?? aiByCategory.get("other");
+          const fallbackRecommended = item.allocated > 0 ? item.allocated : item.spent;
+          const recommendedSpend = Number(
+            Math.max(0, aiItem?.recommendedSpend ?? fallbackRecommended).toFixed(2),
+          );
+
+          return {
+            category: item.category,
+            currentSpend: Number(Math.max(0, item.spent).toFixed(2)),
+            recommendedSpend,
+          };
+        });
+
+        return {
+          items: normalizedItems,
+          generatedAt: validated.generatedAt,
+        };
+      } catch (error) {
+        lastError = error;
+        const message = error instanceof Error ? error.message : String(error);
+
+        if (isModelAvailabilityError(message)) {
+          sawAvailabilityFailure = true;
+          break;
+        }
+
+        if (isStructuredOutputCompatibilityError(message) && outputMode !== "json-object") {
+          continue;
+        }
+
+        if (isJsonGenerationValidationError(message)) {
+          continue;
+        }
+
+        if (error instanceof SyntaxError) {
+          lastError = new Error(`Groq returned invalid JSON: ${error.message}`);
+          console.warn(`[AI] Invalid JSON for ${modelName} (${outputMode}). Trying next mode/model.`);
+          continue;
+        }
+
+        if (error instanceof z.ZodError) {
+          const validationErrors = error.errors
+            .map((e) => `${e.path.join(".")}: ${e.message} (code: ${e.code})`)
+            .join("; ");
+          lastError = new Error(`Groq response failed validation: ${validationErrors}`);
+          console.warn(`[AI] Response schema validation failed for ${modelName} (${outputMode}). Trying next mode/model.`);
+          continue;
+        }
+
+        throw error;
+      }
+    }
+  }
+
+  if (sawAvailabilityFailure) {
+    throw new Error(
+      "No supported Groq model is available for chat completions. Configure GROQ_MODEL_PRIMARY / GROQ_MODEL_FALLBACK_* to valid model IDs.",
+    );
+  }
+
+  if (lastError instanceof Error) {
+    throw lastError;
+  }
+
+  throw new Error("Groq request failed before any model could return a response.");
 }
 
 /**

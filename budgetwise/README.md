@@ -67,4 +67,4 @@ npx prisma migrate dev --name init
 
 Notes
 * Do not commit backend/.env, frontend/.env.local, backend/dev.db, or node_modules
-* Keep OpenAI API keys server side only
+* Keep Groq API keys server side only

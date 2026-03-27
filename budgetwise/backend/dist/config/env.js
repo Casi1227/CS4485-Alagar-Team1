@@ -4,13 +4,16 @@ const envSchema = z.object({
     CORS_ORIGIN: z.string().default("http://localhost:3000"),
     JWT_SECRET: z.string().min(10, "JWT_SECRET must be at least 10 characters").default("dev_secret_change_me"),
     JWT_EXPIRES_IN: z.string().default("7d"),
-    OPENAI_API_KEY: z.string().optional(),
-    // GEMINI_API_KEY: Required for AI-powered budget recommendations feature.
-    // Set this to your Google AI API key to enable Gemini-based insights on the dashboard.
+    // GROQ_API_KEY: Required for AI-powered budget recommendations feature.
     // If not provided, the AI insights endpoint will return a 503 (Unavailable) response.
-    GEMINI_API_KEY: z.string().optional(),
-    // GEMINI_MODEL: Preferred Gemini model for recommendations.
-    // Default uses Gemini 2.5 Flash, with service-level fallbacks for Free tier availability.
-    GEMINI_MODEL: z.string().default("gemini-2.5-flash"),
+    GROQ_API_KEY: z.string().optional(),
+    // Primary and fallback model IDs for dashboard recommendations.
+    GROQ_MODEL_PRIMARY: z.string().default("openai/gpt-oss-20b"),
+    GROQ_MODEL_FALLBACK_1: z.string().default("openai/gpt-oss-120b"),
+    GROQ_MODEL_FALLBACK_2: z.string().default("llama-3.3-70b-versatile"),
+    // Token and payload controls for AI endpoints.
+    GROQ_MAX_TOKENS_INSIGHTS: z.coerce.number().int().positive().default(320),
+    GROQ_MAX_TOKENS_COMPARISON: z.coerce.number().int().positive().default(480),
+    GROQ_MAX_INPUT_CATEGORIES: z.coerce.number().int().positive().default(8),
 });
 export const env = envSchema.parse(process.env);

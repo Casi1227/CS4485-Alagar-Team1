@@ -27,7 +27,7 @@ export function createApp() {
   app.use("/api/expenses", expensesRouter);
   app.use("/api/budgets", budgetsRouter);
   app.use("/api/dashboard", dashboardRouter);
-  // Mount AI insights router for Gemini-powered recommendations
+  // Mount AI insights router for Groq-powered recommendations
   app.use("/api/ai", aiRouter);
   app.use("/api/settings", settingsRouter);
 

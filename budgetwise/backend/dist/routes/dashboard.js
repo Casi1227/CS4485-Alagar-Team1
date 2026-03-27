@@ -7,22 +7,30 @@ import { authRequired } from "../middleware/authRequired.js";
  */
 export const dashboardRouter = Router();
 const CATEGORY_COLORS = {
+    // Common expense categories
+    Rent: "#6366F1",
+    Tuition: "#A855F7",
+    Groceries: "#16A34A",
+    Transportation: "#4ECDC4",
+    Entertainment: "#F97316",
+    Utilities: "#D97706",
+    Health: "#0891B2",
+    Dining: "#DC2626",
+    // Back-compat / legacy categories used in charts
     "Food & Dining": "#DC2626",
-    "Groceries": "#16A34A",
-    "Transportation": "#4ECDC4",
     "Books & Supplies": "#45B7D1",
-    "Entertainment": "#FFA07A",
-    "Housing": "#98D8C8",
-    "Utilities": "#D97706",
-    "Health": "#0891B2",
+    Housing: "#98D8C8",
     "Personal Care": "#BB8FCE",
-    "Rent": "#98D8C8",
-    "Tuition": "#45B7D1",
     Other: "#95A5A6",
 };
+function normalizeCategory(category) {
+    return category.trim().toLowerCase();
+}
+const CATEGORY_COLORS_NORMALIZED = Object.fromEntries(Object.entries(CATEGORY_COLORS).map(([k, v]) => [normalizeCategory(k), v]));
 function getCategoryColor(category, index) {
     const palette = Object.values(CATEGORY_COLORS);
-    return CATEGORY_COLORS[category] ?? palette[index % palette.length];
+    const normalized = normalizeCategory(category);
+    return CATEGORY_COLORS_NORMALIZED[normalized] ?? palette[index % palette.length];
 }
 dashboardRouter.get("/", authRequired, async (req, res) => {
     const userId = req.user.id;
@@ -43,11 +51,16 @@ dashboardRouter.get("/", authRequired, async (req, res) => {
         }),
     ]);
     const totalBudget = budgets.reduce((sum, b) => sum + b.allocated, 0);
-    const totalSpent = expenses.reduce((sum, e) => sum + e.amount, 0);
-    const remaining = totalBudget - totalSpent;
+    const expenseItems = expenses.filter((e) => e.type === "EXPENSE");
+    const incomeItems = expenses.filter((e) => e.type === "INCOME");
+    const totalExpense = expenseItems.reduce((sum, e) => sum + e.amount, 0);
+    const totalIncome = incomeItems.reduce((sum, e) => sum + e.amount, 0);
+    const net = totalIncome - totalExpense;
+    // For budgeting, "Remaining" is based on expenses vs allocated budget.
+    const remaining = totalBudget - totalExpense;
     // Spending by category (for pie chart): { name, value, color }
     const spentByCategory = new Map();
-    for (const e of expenses) {
+    for (const e of expenseItems) {
         spentByCategory.set(e.category, (spentByCategory.get(e.category) ?? 0) + e.amount);
     }
     const categoryBreakdown = Array.from(spentByCategory.entries()).map(([name], i) => ({
@@ -57,12 +70,12 @@ dashboardRouter.get("/", authRequired, async (req, res) => {
     }));
     // Remaining by category (for bar chart): { category, allocated, spent, remaining }
     const spentByCat = new Map();
-    for (const e of expenses) {
+    for (const e of expenseItems) {
         spentByCat.set(e.category, (spentByCat.get(e.category) ?? 0) + e.amount);
     }
     const categorySet = new Set([
         ...budgets.map((b) => b.category),
-        ...expenses.map((e) => e.category),
+        ...expenseItems.map((e) => e.category),
     ]);
     const remainingByCategory = Array.from(categorySet).map((category) => {
         const allocated = budgets.find((b) => b.category === category)?.allocated ?? 0;
@@ -78,7 +91,11 @@ dashboardRouter.get("/", authRequired, async (req, res) => {
         month,
         year,
         totalBudget: Math.round(totalBudget * 100) / 100,
-        totalSpent: Math.round(totalSpent * 100) / 100,
+        totalIncome: Math.round(totalIncome * 100) / 100,
+        totalExpense: Math.round(totalExpense * 100) / 100,
+        net: Math.round(net * 100) / 100,
+        // Backward compatibility for older frontend expectations
+        totalSpent: Math.round(totalExpense * 100) / 100,
         remaining: Math.round(remaining * 100) / 100,
         categoryBreakdown,
         remainingByCategory,

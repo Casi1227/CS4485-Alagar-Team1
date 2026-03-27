@@ -284,18 +284,27 @@ paths:
           $ref: "#/components/responses/Unauthorized"
 
   /ai/dashboard-insights:
-    post:
+    get:
       tags: [AI]
       summary: Generate AI powered dashboard insights for a month
       description: >
-        Server side call to OpenAI. The response is validated and normalized into
+        Server side call to Groq. The response is validated and normalized into
         DashboardAiResponse. Raw model output is never returned to the client.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/DashboardAiRequest"
+      parameters:
+        - in: query
+          name: month
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 12
+          description: Month number, defaults to current month.
+        - in: query
+          name: year
+          required: false
+          schema:
+            type: integer
+          description: Year number, defaults to current year.
       responses:
         "200":
           description: OK
@@ -315,6 +324,64 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "502":
           description: AI provider error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: AI feature unavailable due to missing provider configuration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /ai/budget-comparison:
+    get:
+      tags: [AI]
+      summary: Generate AI optimized category spend comparison for a month
+      description: >
+        Server side call to Groq that returns per-category current spend versus
+        recommended spend for the dashboard comparison chart.
+      parameters:
+        - in: query
+          name: month
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 12
+          description: Month number, defaults to current month.
+        - in: query
+          name: year
+          required: false
+          schema:
+            type: integer
+          description: Year number, defaults to current year.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BudgetComparisonResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          description: AI output failed schema validation after normalization attempts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: AI provider error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: AI feature unavailable due to missing provider configuration
           content:
             application/json:
               schema:
@@ -641,23 +708,31 @@ components:
 
     DashboardAiResponse:
       type: object
-      required: [cards, comparison, recommendedActions, generatedAt]
+      required: [recommendations, generatedAt]
       properties:
-        cards:
+        recommendations:
           type: array
-          description: The top recommendation cards shown in the purple section.
+          minItems: 3
+          maxItems: 3
           items:
-            $ref: "#/components/schemas/AiRecommendationCard"
-        comparison:
-          $ref: "#/components/schemas/AiBudgetComparison"
-        recommendedActions:
-          type: array
-          description: Bullet style recommended actions.
-          items:
-            $ref: "#/components/schemas/AiActionItem"
+            $ref: "#/components/schemas/DashboardRecommendation"
         generatedAt:
           type: string
           format: date-time
+
+    DashboardRecommendation:
+      type: object
+      required: [type, category, title, message]
+      properties:
+        type:
+          type: string
+          enum: [reduce, keepDoing, spendMore]
+        category:
+          type: string
+        title:
+          type: string
+        message:
+          type: string
 
     AiRecommendationCard:
       type: object
@@ -679,6 +754,19 @@ components:
           type: string
           description: Optional related category.
 
+    BudgetComparisonResponse:
+      type: object
+      required: [items, generatedAt]
+      properties:
+        items:
+          type: array
+          description: Data for the bar chart comparing current spending vs AI recommended.
+          items:
+            $ref: "#/components/schemas/AiComparisonItem"
+        generatedAt:
+          type: string
+          format: date-time
+
     AiBudgetComparison:
       type: object
       required: [items]
@@ -691,15 +779,15 @@ components:
 
     AiComparisonItem:
       type: object
-      required: [category, currentSpendCents, recommendedSpendCents]
+      required: [category, currentSpend, recommendedSpend]
       properties:
         category:
           type: string
-        currentSpendCents:
-          type: integer
+        currentSpend:
+          type: number
           minimum: 0
-        recommendedSpendCents:
-          type: integer
+        recommendedSpend:
+          type: number
           minimum: 0
 
     AiActionItem:

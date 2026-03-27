@@ -1,7 +1,11 @@
 import { Router } from "express";
 import { prisma } from "../lib/prisma.js";
 import { authRequired, type AuthedRequest } from "../middleware/authRequired.js";
-import { generateDashboardInsights, CategorySpendSummary } from "../services/aiInsights.js";
+import {
+  generateDashboardInsights,
+  generateBudgetComparison,
+  CategorySpendSummary,
+} from "../services/aiInsights.js";
 
 /**
  * ===== AI Insights Router =====
@@ -13,7 +17,7 @@ import { generateDashboardInsights, CategorySpendSummary } from "../services/aiI
  * 2. Frontend makes GET request to this endpoint with month and year params
  * 3. We fetch user's expenses and budgets for that month from Prisma
  * 4. Aggregate spending by category
- * 5. Call Gemini API to generate 3 personalized recommendations
+ * 5. Call Groq API to generate 3 personalized recommendations
  * 6. Return recommendations as JSON to frontend
  * 7. Frontend renders the 3 recommendations in the "Recommended Actions" section
  *
@@ -47,10 +51,10 @@ export const aiRouter = Router();
  *     "generatedAt": "2026-03-12T14:30:00.000Z"
  *   }
  *
- * Response (503) - If GEMINI_API_KEY is not configured:
+ * Response (503) - If GROQ_API_KEY is not configured:
  *   { "error": "AI insights are not available. Please contact support." }
  *
- * Response (422) - If Gemini output fails validation:
+ * Response (422) - If Groq output fails validation:
  *   { "error": "Failed to generate valid recommendations. Please try again." }
  */
 aiRouter.get("/dashboard-insights", authRequired, async (req: AuthedRequest, res) => {
@@ -96,9 +100,10 @@ aiRouter.get("/dashboard-insights", authRequired, async (req: AuthedRequest, res
     // Design Decision: Use Map for efficient O(1) lookups vs O(n) array.find()
     const spendByCategory = new Map<string, number>();
     const budgetByCategory = new Map<string, number>();
+    const expenseItems = expenses.filter((expense) => expense.type === "EXPENSE");
 
     // Sum up all expenses by category
-    for (const expense of expenses) {
+    for (const expense of expenseItems) {
       const current = spendByCategory.get(expense.category) ?? 0;
       spendByCategory.set(expense.category, current + expense.amount);
     }
@@ -111,7 +116,7 @@ aiRouter.get("/dashboard-insights", authRequired, async (req: AuthedRequest, res
       budgetByCategory.set(budget.category, current + budget.allocated);
     }
 
-    // Build the spending summary for Gemini
+    // Build the spending summary for Groq
     // Include all categories that have either spending or budget (or both)
     const allCategories = new Set([...spendByCategory.keys(), ...budgetByCategory.keys()]);
     const spendingSummary: CategorySpendSummary[] = Array.from(allCategories).map((category) => ({
@@ -122,7 +127,7 @@ aiRouter.get("/dashboard-insights", authRequired, async (req: AuthedRequest, res
 
     console.log(`[AI Route] Spending summary: ${JSON.stringify(spendingSummary)}`);
 
-    // Call Gemini to generate recommendations
+    // Call Groq to generate recommendations
     try {
       const recommendations = await generateDashboardInsights(spendingSummary, month, year);
 
@@ -132,10 +137,10 @@ aiRouter.get("/dashboard-insights", authRequired, async (req: AuthedRequest, res
       return res.json(recommendations);
     } catch (aiError) {
       // Check if the error is due to missing API key
-      if (aiError instanceof Error && aiError.message.includes("GEMINI_API_KEY not configured")) {
+      if (aiError instanceof Error && aiError.message.includes("GROQ_API_KEY not configured")) {
         // API key not configured: return 503 Service Unavailable
         // Indicates the feature is temporarily disabled, not a client error
-        console.warn("[AI Route] API key not configured");
+        console.warn("[AI Route] GROQ API key not configured");
         return res.status(503).json({
           error: "AI insights are not available. Please contact support.",
         });
@@ -145,15 +150,17 @@ aiRouter.get("/dashboard-insights", authRequired, async (req: AuthedRequest, res
 
       // Provider/model availability errors should surface as upstream dependency failure.
       if (
-        aiMessage.includes("No supported Gemini model is available") ||
+        aiMessage.includes("No supported Groq model is available") ||
         (aiMessage.toLowerCase().includes("model") &&
           (aiMessage.toLowerCase().includes("not found") ||
             aiMessage.toLowerCase().includes("unavailable") ||
             aiMessage.toLowerCase().includes("not supported") ||
             aiMessage.toLowerCase().includes("does not have access") ||
             aiMessage.toLowerCase().includes("permission denied") ||
-            aiMessage.toLowerCase().includes("free tier") ||
-            aiMessage.includes("404")))
+            aiMessage.toLowerCase().includes("not allowed") ||
+            aiMessage.toLowerCase().includes("rate limit") ||
+            aiMessage.includes("404") ||
+            aiMessage.includes("429")))
       ) {
         console.error("[AI Route] AI provider/model unavailable:", aiMessage);
         return res.status(502).json({
@@ -183,6 +190,121 @@ aiRouter.get("/dashboard-insights", authRequired, async (req: AuthedRequest, res
     console.error("[AI Route] Dashboard insights error:", error);
     return res.status(500).json({
       error: "An error occurred while generating recommendations.",
+    });
+  }
+});
+
+/**
+ * GET /api/ai/budget-comparison
+ * Returns per-category current spend vs AI-recommended spend for dashboard charting.
+ */
+aiRouter.get("/budget-comparison", authRequired, async (req: AuthedRequest, res) => {
+  const userId = req.user!.id;
+  const now = new Date();
+  const month = req.query.month ? Number(req.query.month) : now.getMonth() + 1;
+  const year = req.query.year ? Number(req.query.year) : now.getFullYear();
+
+  if (month < 1 || month > 12) {
+    return res.status(400).json({ error: "Month must be between 1 and 12" });
+  }
+
+  try {
+    const startOfMonth = new Date(year, month - 1, 1);
+    const endOfMonth = new Date(year, month, 0, 23, 59, 59, 999);
+
+    const [expenses, budgets] = await Promise.all([
+      prisma.expense.findMany({
+        where: {
+          userId,
+          date: { gte: startOfMonth, lte: endOfMonth },
+        },
+      }),
+      prisma.budget.findMany({
+        where: {
+          userId,
+          month,
+          year,
+        },
+      }),
+    ]);
+
+    const expenseItems = expenses.filter((expense) => expense.type === "EXPENSE");
+    const incomeItems = expenses.filter((expense) => expense.type === "INCOME");
+    const totalIncome = incomeItems.reduce((sum, income) => sum + income.amount, 0);
+
+    const spendByCategory = new Map<string, number>();
+    const budgetByCategory = new Map<string, number>();
+
+    for (const expense of expenseItems) {
+      spendByCategory.set(expense.category, (spendByCategory.get(expense.category) ?? 0) + expense.amount);
+    }
+
+    for (const budget of budgets) {
+      budgetByCategory.set(budget.category, (budgetByCategory.get(budget.category) ?? 0) + budget.allocated);
+    }
+
+    const allCategories = new Set([...spendByCategory.keys(), ...budgetByCategory.keys()]);
+    const spendingSummary: CategorySpendSummary[] = Array.from(allCategories).map((category) => ({
+      category,
+      spent: spendByCategory.get(category) ?? 0,
+      allocated: budgetByCategory.get(category) ?? 0,
+    }));
+
+    if (spendingSummary.length === 0) {
+      return res.json({
+        items: [],
+        generatedAt: new Date().toISOString(),
+      });
+    }
+
+    try {
+      const comparison = await generateBudgetComparison(spendingSummary, totalIncome, month, year);
+      return res.json(comparison);
+    } catch (aiError) {
+      if (aiError instanceof Error && aiError.message.includes("GROQ_API_KEY not configured")) {
+        return res.status(503).json({
+          error: "AI insights are not available. Please contact support.",
+        });
+      }
+
+      const aiMessage = aiError instanceof Error ? aiError.message : String(aiError);
+      console.error("[AI Route] Budget comparison AI error:", aiMessage);
+
+      if (
+        aiMessage.includes("No supported Groq model is available") ||
+        (aiMessage.toLowerCase().includes("model") &&
+          (aiMessage.toLowerCase().includes("not found") ||
+            aiMessage.toLowerCase().includes("unavailable") ||
+            aiMessage.toLowerCase().includes("not supported") ||
+            aiMessage.toLowerCase().includes("does not have access") ||
+            aiMessage.toLowerCase().includes("permission denied") ||
+            aiMessage.toLowerCase().includes("not allowed") ||
+            aiMessage.toLowerCase().includes("rate limit") ||
+            aiMessage.includes("404") ||
+            aiMessage.includes("429")))
+      ) {
+        return res.status(502).json({
+          error: "AI provider model is unavailable. Please try again later or update model configuration.",
+        });
+      }
+
+      if (
+        aiMessage.toLowerCase().includes("failed validation") ||
+        aiMessage.toLowerCase().includes("invalid json")
+      ) {
+        return res.status(422).json({
+          error: "Failed to generate valid recommendations. Please try again.",
+        });
+      }
+
+      return res.status(502).json({
+        error: "AI service is temporarily unavailable. Please try again later.",
+      });
+    }
+  } catch (error) {
+    console.error("[AI Route] Budget comparison error:", error);
+    return res.status(500).json({
+      error: "An error occurred while generating budget comparison.",
     });
   }
 });
