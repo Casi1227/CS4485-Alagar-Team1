@@ -141,15 +141,14 @@ authRouter.post("/forgot-password", async (req, res) => {
 	resetPasswordUrl.searchParams.set("email", user.email);
 	resetPasswordUrl.searchParams.set("key", key);
 
-	return mailTransport.sendMail(
-		{
-			from: mailSender,
-			to: {
-				name: user.name,
-				address: user.email,
-			},
-			subject: "Reset Your Account Password",
-			text: `\
+	const resetPasswordEmailMessage = {
+		from: mailSender,
+		to: {
+			name: user.name,
+			address: user.email,
+		},
+		subject: "Reset Your Account Password",
+		text: `\
 Hello, ${user.name}.
 
 Please user the following link to reset your password. \
@@ -161,11 +160,16 @@ ${resetPasswordUrl.href}
 Thank you,
 Budgetwise\
 `,
-		},
-		(err, info) => {
-			const info_string = JSON.stringify(info, null, '\t');
-			console.log(`DEBUG: Reset-password email info: ${info_string}`);
+	};
+	console.log(
+		`Reset-password email message: ${
+			JSON.stringify(resetPasswordEmailMessage, null, '\t')
+		}`,
+	);
 
+	return mailTransport.sendMail(
+		resetPasswordEmailMessage,
+		(err, info) => {
 			if (err) {
 				return res.status(500).json({ error: err });
 			}
