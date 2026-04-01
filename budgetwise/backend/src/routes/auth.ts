@@ -163,7 +163,8 @@ Budgetwise\
 `,
 		},
 		(err, info) => {
-			console.log(`Reset-password email: ${JSON.stringify(info)}`);
+			const info_string = JSON.stringify(info, null, '\t');
+			console.log(`DEBUG: Reset-password email info: ${info_string}`);
 
 			if (err) {
 				return res.status(500).json({ error: err });
