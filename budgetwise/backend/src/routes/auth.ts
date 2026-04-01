@@ -116,8 +116,16 @@ authRouter.post("/forgot-password", async (req, res) => {
 		/* Nothing. */
 	}
 
-	const mailSender = process.env.MAIL_SERVER_RESET_PASSWORD_SENDER
-		?? `Budgetwise <no-reply@${req.hostname}>`;
+	let mailSender = {
+		name: 'Budgetwise',
+		address: `no-reply@${req.hostname}`,
+	};
+	try {
+		mailSender =
+			JSON.parse(process.env.MAIL_SERVER_RESET_PASSWORD_SENDER);
+	} catch {
+		/* Nothing. */
+	}
 
 	const mailTransport = nodemailer.createTransport({
 		host: mailServerName,
@@ -136,7 +144,10 @@ authRouter.post("/forgot-password", async (req, res) => {
 	return mailTransport.sendMail(
 		{
 			from: mailSender,
-			to: `${user.name} <${user.email}>`,
+			to: {
+				name: user.name,
+				address: user.email,
+			},
 			subject: "Reset Your Account Password",
 			text: `\
 Hello, ${user.name}.
