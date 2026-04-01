@@ -167,16 +167,13 @@ Budgetwise\
 		}`,
 	);
 
-	return mailTransport.sendMail(
-		resetPasswordEmailMessage,
-		(err, info) => {
-			if (err) {
-				return res.status(500).json({ error: err });
-			}
+	try {
+		await mailTransport.sendMail(resetPasswordEmailMessage);
+	} catch (err) {
+		return res.status(500).json({ error: err });
+	}
 
-			return res.json({ ok: true });
-		},
-	);
+	return res.json({ ok: true });
 });
 
 authRouter.post("/reset-password", async (req, res) => {
