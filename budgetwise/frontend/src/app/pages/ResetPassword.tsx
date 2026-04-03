@@ -1,9 +1,15 @@
 "use client";
 
 import { useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { CreditCard, Lock, Eye, EyeOff } from "lucide-react";
 
 export function ResetPassword() {
+    const searchParams = useSearchParams();
+
+    const email = searchParams.get("email") || "";
+    const key = searchParams.get("key") || "";
+
     const [password, setPassword] = useState("");
     const [confirmPassword, setConfirmPassword] = useState("");
     const [showPassword, setShowPassword] = useState(false);
@@ -16,6 +22,11 @@ export function ResetPassword() {
         e.preventDefault();
         setError("");
         setMessage("");
+
+        if (!email || !key) {
+            setError("Invalid or expired reset link.");
+            return;
+        }
 
         if (password !== confirmPassword) {
             setError("Passwords do not match.");
@@ -30,8 +41,27 @@ export function ResetPassword() {
         try {
             setLoading(true);
 
-            // Placeholder for backend reset call
-            console.log("Resetting password:", password);
+            const response = await fetch(
+                `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/auth/reset-password`,
+                {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                        email,
+                        key,
+                        password,
+                    }),
+                }
+            );
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                setError(data?.error || "There was a problem resetting your password.");
+                return;
+            }
 
             setMessage("Your password has been successfully reset.");
             setPassword("");
