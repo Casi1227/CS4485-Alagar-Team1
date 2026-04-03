@@ -109,6 +109,31 @@ aiRouter.get("/dashboard-insights", authRequired, async (req, res) => {
             spent: spendByCategory.get(category) ?? 0,
             allocated: budgetByCategory.get(category) ?? 0,
         }));
+        if (spendingSummary.length === 0) {
+            return res.json({
+                recommendations: [
+                    {
+                        type: "reduce",
+                        category: "General",
+                        title: "Avoid impulse spending this week",
+                        message: "Action: Skip one non-essential purchase this week. | Why: No current spending history is available yet, so building discipline now creates a strong baseline. | Impact: Better control and faster savings growth. | When: Review purchases at the end of this week.",
+                    },
+                    {
+                        type: "keepDoing",
+                        category: "General",
+                        title: "Keep tracking every transaction",
+                        message: "Action: Log each expense and income entry as it happens. | Why: Consistent tracking improves recommendation quality and reveals hidden spending patterns. | Impact: More accurate AI guidance and clearer monthly progress. | When: Continue daily for the next 2 weeks.",
+                    },
+                    {
+                        type: "spendMore",
+                        category: "Savings",
+                        title: "Fund savings before discretionary spend",
+                        message: "Action: Set aside a small fixed amount before optional purchases. | Why: Prioritizing savings early helps prevent end-of-month shortfalls and builds resilience. | Impact: Stronger emergency cushion and reduced money stress. | When: Start with your next paycheck.",
+                    },
+                ],
+                generatedAt: new Date().toISOString(),
+            });
+        }
         console.log(`[AI Route] Spending summary: ${JSON.stringify(spendingSummary)}`);
         // Call Groq to generate recommendations
         try {

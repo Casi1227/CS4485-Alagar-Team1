@@ -13,7 +13,7 @@ import { env } from "../config/env.js";
  * Used to build the prompt for Groq.
  */
 export const categorySpendSummarySchema = z.object({
-  category: z.string().describe("The spending category (e.g., 'Food & Dining')"),
+  category: z.string().describe("The spending category (e.g., 'Dining', 'Rent')"),
   spent: z.number().nonnegative().describe("Amount spent in this category (dollars)"),
   allocated: z.number().nonnegative().describe("Budget allocated for this category (dollars)"),
 });
@@ -29,8 +29,16 @@ export const recommendationSchema = z.object({
     .enum(["reduce", "keepDoing", "spendMore"])
     .describe("Whether the user should reduce, keep, or increase spending in this category"),
   category: z.string().describe("The spending category this recommendation applies to"),
-  title: z.string().describe("A short title summarizing the recommendation"),
-  message: z.string().describe("A detailed message explaining why and how to follow this recommendation"),
+  title: z
+    .string()
+    .min(3)
+    .max(72)
+    .describe("A concise title summarizing the recommendation"),
+  message: z
+    .string()
+    .min(40)
+    .max(360)
+    .describe("A compact and detailed recommendation including Action, Why, Impact, and When"),
 });
 
 export type Recommendation = z.infer<typeof recommendationSchema>;
@@ -224,6 +232,12 @@ function buildBudgetComparisonResponseFormat(mode: OutputMode): Record<string, u
   };
 }
 
+function calculateInsightsTokenBudget(categoryCount: number): number {
+  const adaptiveBudget = 220 + categoryCount * 32;
+  const boundedAdaptiveBudget = Math.max(300, adaptiveBudget);
+  return Math.min(env.GROQ_MAX_TOKENS_INSIGHTS, boundedAdaptiveBudget);
+}
+
 /**
  * ===== Groq Integration =====
  * Calls Groq's Chat Completions API to generate AI-powered budget recommendations.
@@ -252,16 +266,17 @@ export async function generateDashboardInsights(
     .join("\n");
 
   const monthLabel = new Date(year, month - 1).toLocaleDateString("en-US", { month: "long", year: "numeric" });
+  const insightsTokenBudget = calculateInsightsTokenBudget(trimmedSpendingData.length);
 
   const messages = [
     {
       role: "system",
       content:
-        "You are a personal finance advisor. Return compact JSON only.",
+        "You are a precise personal finance advisor. Return compact JSON only. Be concrete, practical, and avoid filler.",
     },
     {
       role: "user",
-      content: `Month: ${monthLabel}.\nSpending:\n${categoryBreakdown}\n\nReturn exactly 3 recommendations, one each type: reduce, keepDoing, spendMore.\nEach item: {type, category, title<=50 chars, message<=140 chars}. JSON only.`,
+      content: `Month: ${monthLabel}.\nSpending:\n${categoryBreakdown}\n\nReturn exactly 3 recommendations, one each type: reduce, keepDoing, spendMore.\nEach item: {type, category, title, message}.\nTitle rules: 16-72 characters, specific to category and action.\nMessage rules: 100-360 characters with exactly these 4 bullet lines:\n- Action: <one concrete step>\n- Why: <category-specific reason using the data>\n- Impact: <expected outcome with rough amount/percent>\n- When: <timeframe or weekly cadence>\nNo disclaimers. No generic advice. No repeated text between recommendations. JSON only.`,
     },
   ] as const;
 
@@ -279,7 +294,7 @@ export async function generateDashboardInsights(
           model: modelName,
           messages: messages as any,
           temperature: 0,
-          max_tokens: env.GROQ_MAX_TOKENS_INSIGHTS,
+          max_tokens: insightsTokenBudget,
         };
 
         if (outputMode !== "no-format") {

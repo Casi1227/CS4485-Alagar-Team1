@@ -12,7 +12,7 @@ const envSchema = z.object({
     GROQ_MODEL_FALLBACK_1: z.string().default("openai/gpt-oss-120b"),
     GROQ_MODEL_FALLBACK_2: z.string().default("llama-3.3-70b-versatile"),
     // Token and payload controls for AI endpoints.
-    GROQ_MAX_TOKENS_INSIGHTS: z.coerce.number().int().positive().default(320),
+    GROQ_MAX_TOKENS_INSIGHTS: z.coerce.number().int().positive().default(420),
     GROQ_MAX_TOKENS_COMPARISON: z.coerce.number().int().positive().default(480),
     GROQ_MAX_INPUT_CATEGORIES: z.coerce.number().int().positive().default(8),
 });

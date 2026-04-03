@@ -44,7 +44,7 @@ export const aiRouter = Router();
  * Response (200):
  *   {
  *     "recommendations": [
- *       { "type": "reduce", "category": "Food & Dining", "title": "Cut dining out", "message": "..." },
+ *       { "type": "reduce", "category": "Dining", "title": "Cut dining out", "message": "..." },
  *       { "type": "keepDoing", "category": "Transportation", "title": "Great transit habits", "message": "..." },
  *       { "type": "spendMore", "category": "Health", "title": "Prioritize wellness", "message": "..." }
  *     ],
@@ -124,6 +124,35 @@ aiRouter.get("/dashboard-insights", authRequired, async (req: AuthedRequest, res
       spent: spendByCategory.get(category) ?? 0,
       allocated: budgetByCategory.get(category) ?? 0,
     }));
+
+    if (spendingSummary.length === 0) {
+      return res.json({
+        recommendations: [
+          {
+            type: "reduce",
+            category: "General",
+            title: "Avoid impulse spending this week",
+            message:
+              "- Action: Skip one non-essential purchase this week.\n- Why: No current spending history is available yet, so building discipline now creates a strong baseline.\n- Impact: Better control and faster savings growth.\n- When: Review purchases at the end of this week.",
+          },
+          {
+            type: "keepDoing",
+            category: "General",
+            title: "Keep tracking every transaction",
+            message:
+              "- Action: Log each expense and income entry as it happens.\n- Why: Consistent tracking improves recommendation quality and reveals hidden spending patterns.\n- Impact: More accurate AI guidance and clearer monthly progress.\n- When: Continue daily for the next 2 weeks.",
+          },
+          {
+            type: "spendMore",
+            category: "Savings",
+            title: "Fund savings before discretionary spend",
+            message:
+              "- Action: Set aside a small fixed amount before optional purchases.\n- Why: Prioritizing savings early helps prevent end-of-month shortfalls and builds resilience.\n- Impact: Stronger emergency cushion and reduced money stress.\n- When: Start with your next paycheck.",
+          },
+        ],
+        generatedAt: new Date().toISOString(),
+      });
+    }
 
     console.log(`[AI Route] Spending summary: ${JSON.stringify(spendingSummary)}`);
 

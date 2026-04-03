@@ -53,6 +53,14 @@ function getIconAndColorForType(type: 'reduce' | 'keepDoing' | 'spendMore') {
   }
 }
 
+function getRecommendationBulletPoints(message: string): string[] {
+  return message
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith('- '))
+    .map((line) => line.slice(2).trim());
+}
+
 // ===== Component =====
 /**
  * AIRecommendations Component
@@ -246,13 +254,22 @@ export function AIRecommendations({ month, year }: { month?: number; year?: numb
           <div className="space-y-3">
             {recommendations.map((rec, index) => {
               const { Icon, color } = getIconAndColorForType(rec.type);
+              const bulletPoints = getRecommendationBulletPoints(rec.message);
               return (
                 <div key={index} className="flex items-start gap-3 p-3 bg-white/5 rounded-lg hover:bg-white/10 transition-colors">
                   <Icon className={`w-5 h-5 ${color} mt-0.5 flex-shrink-0`} />
                   <div className="flex-1">
                     {/* Display the AI-generated title and message */}
                     <p className="font-medium text-white text-sm">{rec.title}</p>
-                    <p className="text-white/80 text-sm mt-1">{rec.message}</p>
+                    {bulletPoints.length > 0 ? (
+                      <ul className="text-white/80 text-sm mt-1 leading-relaxed break-words list-disc pl-5 space-y-1">
+                        {bulletPoints.map((point, pointIndex) => (
+                          <li key={pointIndex}>{point}</li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="text-white/80 text-sm mt-1 leading-relaxed break-words">{rec.message}</p>
+                    )}
                   </div>
                 </div>
               );

@@ -26,6 +26,10 @@ Edit backend/.env and set:
 DATABASE_URL="file:./dev.db"
 JWT_SECRET="budgetwise_dev_secret_9f3a2c1d7e6b5a4c8d1f0e9b2a7c6d5e"
 
+Also set the MAIL_SERVER_* variables in this file.
+A description and an example configuration of these variables
+are provided in .env.example.
+
 Install and start:
 
 npm install

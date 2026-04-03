@@ -3,20 +3,80 @@
 import { useState } from "react";
 import { CreditCard, Mail, TrendingUp, PieChart, DollarSign } from "lucide-react";
 
+function getErrorMessage(error: unknown): string {
+    if (typeof error === "string") return error;
+
+    if (
+        error &&
+        typeof error === "object" &&
+        "formErrors" in error &&
+        Array.isArray((error as { formErrors?: unknown[] }).formErrors)
+    ) {
+        const formErrors = (error as { formErrors?: string[] }).formErrors;
+        if (formErrors && formErrors.length > 0) return formErrors[0];
+    }
+
+    if (
+        error &&
+        typeof error === "object" &&
+        "fieldErrors" in error &&
+        typeof (error as { fieldErrors?: unknown }).fieldErrors === "object"
+    ) {
+        const fieldErrors = (error as { fieldErrors?: Record<string, string[]> }).fieldErrors;
+        if (fieldErrors) {
+            for (const value of Object.values(fieldErrors)) {
+                if (Array.isArray(value) && value.length > 0) return value[0];
+            }
+        }
+    }
+
+    return "Something went wrong.";
+}
+
 export function ForgotPassword() {
     const [email, setEmail] = useState("");
     const [message, setMessage] = useState("");
+    const [error, setError] = useState("");
+    const [loading, setLoading] = useState(false);
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        console.log("Password reset request:", email);
-        setMessage("If this email exists, a reset link has been sent.");
+        setMessage("");
+        setError("");
+
+        try {
+            setLoading(true);
+
+            const response = await fetch(
+                `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/auth/forgot-password`,
+                {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({ email }),
+                }
+            );
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                setError(getErrorMessage(data?.error) || "Unable to send reset link.");
+                return;
+            }
+
+            setMessage("If this email exists, a reset link has been sent.");
+            setEmail("");
+        } catch (err) {
+            setError("Unable to send reset link right now.");
+        } finally {
+            setLoading(false);
+        }
     };
 
     return (
         <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 flex items-center justify-center p-6">
             <div className="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
-                {/* Left Side - Branding */}
                 <div className="hidden lg:block">
                     <div className="space-y-6">
                         <div className="flex items-center gap-3">
@@ -34,7 +94,7 @@ export function ForgotPassword() {
                                 Recover Access to Your Account
                             </h2>
                             <p className="text-lg text-gray-600">
-                                Enter your email and we'll send you a reset link so you can securely get back into your account.
+                                Enter your email and we&apos;ll send you a reset link so you can securely get back into your account.
                             </p>
                         </div>
 
@@ -72,10 +132,8 @@ export function ForgotPassword() {
                     </div>
                 </div>
 
-                {/* Right Side - Forgot Password Form */}
                 <div className="w-full max-w-md mx-auto">
                     <div className="bg-white rounded-2xl shadow-xl border border-gray-200 p-8">
-                        {/* Mobile Logo */}
                         <div className="lg:hidden flex items-center gap-3 mb-8">
                             <div className="p-2 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-xl">
                                 <CreditCard className="w-8 h-8 text-white" />
@@ -89,13 +147,19 @@ export function ForgotPassword() {
                         <div className="mb-8">
                             <h2 className="text-2xl font-bold text-gray-900 mb-2">Forgot Password?</h2>
                             <p className="text-gray-600">
-                                Enter your email address and we'll send you a reset link.
+                                Enter your email address and we&apos;ll send you a reset link.
                             </p>
                         </div>
 
                         {message ? (
                             <div className="mb-4 p-3 rounded-lg border border-green-200 bg-green-50 text-green-700">
                                 {message}
+                            </div>
+                        ) : null}
+
+                        {error ? (
+                            <div className="mb-4 p-3 rounded-lg border border-red-200 bg-red-50 text-red-700">
+                                {error}
                             </div>
                         ) : null}
 
@@ -120,9 +184,10 @@ export function ForgotPassword() {
 
                             <button
                                 type="submit"
-                                className="w-full py-3 bg-gradient-to-r from-purple-500 to-indigo-600 text-white font-semibold rounded-lg hover:from-purple-600 hover:to-indigo-700 transition-all shadow-lg hover:shadow-xl"
+                                disabled={loading}
+                                className="w-full py-3 bg-gradient-to-r from-purple-500 to-indigo-600 text-white font-semibold rounded-lg hover:from-purple-600 hover:to-indigo-700 transition-all shadow-lg hover:shadow-xl disabled:opacity-50"
                             >
-                                Send Reset Link
+                                {loading ? "Sending..." : "Send Reset Link"}
                             </button>
                         </form>
 

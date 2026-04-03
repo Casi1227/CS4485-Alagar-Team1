@@ -24,8 +24,16 @@ export const recommendationSchema = z.object({
         .enum(["reduce", "keepDoing", "spendMore"])
         .describe("Whether the user should reduce, keep, or increase spending in this category"),
     category: z.string().describe("The spending category this recommendation applies to"),
-    title: z.string().describe("A short title summarizing the recommendation"),
-    message: z.string().describe("A detailed message explaining why and how to follow this recommendation"),
+    title: z
+        .string()
+        .min(3)
+        .max(72)
+        .describe("A concise title summarizing the recommendation"),
+    message: z
+        .string()
+        .min(40)
+        .max(360)
+        .describe("A compact and detailed recommendation including Action, Why, Impact, and When"),
 });
 /**
  * Full response schema: exactly 3 recommendations + metadata.
@@ -186,6 +194,11 @@ function buildBudgetComparisonResponseFormat(mode) {
         },
     };
 }
+function calculateInsightsTokenBudget(categoryCount) {
+    const adaptiveBudget = 220 + categoryCount * 32;
+    const boundedAdaptiveBudget = Math.max(300, adaptiveBudget);
+    return Math.min(env.GROQ_MAX_TOKENS_INSIGHTS, boundedAdaptiveBudget);
+}
 /**
  * ===== Groq Integration =====
  * Calls Groq's Chat Completions API to generate AI-powered budget recommendations.
@@ -202,14 +215,15 @@ export async function generateDashboardInsights(spendingData, month, year) {
         .map((item) => `- ${item.category}: $${item.spent.toFixed(2)} spent of $${item.allocated.toFixed(2)} allocated (${item.allocated > 0 ? ((item.spent / item.allocated) * 100).toFixed(1) : "N/A"}% of budget)`)
         .join("\n");
     const monthLabel = new Date(year, month - 1).toLocaleDateString("en-US", { month: "long", year: "numeric" });
+    const insightsTokenBudget = calculateInsightsTokenBudget(trimmedSpendingData.length);
     const messages = [
         {
             role: "system",
-            content: "You are a personal finance advisor. Return compact JSON only.",
+            content: "You are a precise personal finance advisor. Return compact JSON only. Be concrete, practical, and avoid filler.",
         },
         {
             role: "user",
-            content: `Month: ${monthLabel}.\nSpending:\n${categoryBreakdown}\n\nReturn exactly 3 recommendations, one each type: reduce, keepDoing, spendMore.\nEach item: {type, category, title<=50 chars, message<=140 chars}. JSON only.`,
+            content: `Month: ${monthLabel}.\nSpending:\n${categoryBreakdown}\n\nReturn exactly 3 recommendations, one each type: reduce, keepDoing, spendMore.\nEach item: {type, category, title, message}.\nTitle rules: 16-72 characters, specific to category and action.\nMessage rules: 100-320 characters and this exact compact format with labels in one paragraph:\nAction: <one concrete step> | Why: <category-specific reason using the data> | Impact: <expected outcome with rough amount/percent> | When: <timeframe or weekly cadence>.\nNo disclaimers. No generic advice. No repeated text between recommendations. JSON only.`,
         },
     ];
     let sawAvailabilityFailure = false;
@@ -223,7 +237,7 @@ export async function generateDashboardInsights(spendingData, month, year) {
                     model: modelName,
                     messages: messages,
                     temperature: 0,
-                    max_tokens: env.GROQ_MAX_TOKENS_INSIGHTS,
+                    max_tokens: insightsTokenBudget,
                 };
                 if (outputMode !== "no-format") {
                     completionConfig.response_format = buildDashboardInsightsResponseFormat(outputMode);
