@@ -3,26 +3,33 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Sparkles, DollarSign, TrendingUp, Lightbulb, ChevronRight, Check } from 'lucide-react';
 import { apiJson } from '../lib/api';
+import { STANDARD_EXPENSE_CATEGORIES, type StandardExpenseCategory } from '../lib/expenseCategories';
 
-const categoryOptions = [
-  { name: 'Rent', icon: '🏠', suggestedPercent: 30, color: 'bg-slate-100 text-slate-700' },
-  { name: 'Groceries', icon: '🛒', suggestedPercent: 12, color: 'bg-lime-100 text-lime-700' },
-  { name: 'Tuition', icon: '🎓', suggestedPercent: 10, color: 'bg-cyan-100 text-cyan-700' },
-  { name: 'Food & Dining', icon: '🍔', suggestedPercent: 10, color: 'bg-orange-100 text-orange-600' },
-  { name: 'Transportation', icon: '🚗', suggestedPercent: 8, color: 'bg-blue-100 text-blue-600' },
-  { name: 'Books & Supplies', icon: '📚', suggestedPercent: 5, color: 'bg-green-100 text-green-600' },
-  { name: 'Entertainment', icon: '🎮', suggestedPercent: 5, color: 'bg-purple-100 text-purple-600' },
-  { name: 'Personal Care', icon: '💇', suggestedPercent: 5, color: 'bg-pink-100 text-pink-600' },
-  { name: 'Health & Fitness', icon: '💪', suggestedPercent: 5, color: 'bg-red-100 text-red-600' },
-  { name: 'Utilities', icon: '💡', suggestedPercent: 5, color: 'bg-yellow-100 text-yellow-600' },
-  { name: 'Savings', icon: '💰', suggestedPercent: 5, color: 'bg-emerald-100 text-emerald-600' },
-  { name: 'Other', icon: '🔧', suggestedPercent: 0, color: 'bg-gray-100 text-gray-700' },
-];
+/** Suggested % splits (sum ≈ 100) for the 9 canonical categories. */
+const CATEGORY_META: Record<
+  StandardExpenseCategory,
+  { icon: string; suggestedPercent: number; color: string }
+> = {
+  Rent: { icon: '🏠', suggestedPercent: 28, color: 'bg-slate-100 text-slate-700' },
+  Groceries: { icon: '🛒', suggestedPercent: 12, color: 'bg-lime-100 text-lime-700' },
+  Tuition: { icon: '🎓', suggestedPercent: 15, color: 'bg-cyan-100 text-cyan-700' },
+  Transportation: { icon: '🚗', suggestedPercent: 10, color: 'bg-blue-100 text-blue-600' },
+  Entertainment: { icon: '🎮', suggestedPercent: 8, color: 'bg-purple-100 text-purple-600' },
+  Utilities: { icon: '💡', suggestedPercent: 10, color: 'bg-yellow-100 text-yellow-600' },
+  Health: { icon: '💪', suggestedPercent: 8, color: 'bg-red-100 text-red-600' },
+  Dining: { icon: '🍔', suggestedPercent: 7, color: 'bg-orange-100 text-orange-600' },
+  Other: { icon: '🔧', suggestedPercent: 2, color: 'bg-gray-100 text-gray-700' },
+};
+
+const categoryOptions = STANDARD_EXPENSE_CATEGORIES.map((name) => ({
+  name,
+  ...CATEGORY_META[name],
+}));
 
 const aiInsights = [
   {
     title: 'Student-Optimized Budget',
-    description: 'Based on average student spending patterns, we recommend allocating 25% to food and dining.',
+    description: 'Based on average student spending patterns, we recommend allocating a realistic share to rent and dining.',
     impact: 'high',
   },
   {
@@ -95,11 +102,6 @@ function balanceCategories(income: number, cats: BudgetCategory[]): BudgetCatego
 
   adjusted[lastIdx].percent = income > 0 ? (adjusted[lastIdx].amount / income) * 100 : 0;
   return adjusted;
-}
-
-function wouldGoNegative(income: number, cats: BudgetCategory[]) {
-  const total = cats.reduce((sum, c) => sum + c.amount, 0);
-  return round2(income - total) < -0.01;
 }
 
 const DECIMAL_RE = /^\d*\.?\d*$/;
@@ -263,14 +265,6 @@ export function BudgetCreator() {
       percent: income > 0 ? (amt / income) * 100 : 0,
     };
 
-    if (wouldGoNegative(income, newCategories)) {
-      // revert input to last valid value
-      const revert = [...amountInputs];
-      revert[index] = String(budgetCategories[index].amount);
-      setAmountInputs(revert);
-      return;
-    }
-
     const balanced = balanceCategories(income, newCategories);
     setBudgetCategories(balanced);
     syncInputsFromCategories(balanced);
@@ -295,13 +289,6 @@ export function BudgetCreator() {
       percent: pct,
       amount: round2((income * pct) / 100),
     };
-
-    if (wouldGoNegative(income, newCategories)) {
-      const revert = [...percentInputs];
-      revert[index] = String(round2(budgetCategories[index].percent));
-      setPercentInputs(revert);
-      return;
-    }
 
     const balanced = balanceCategories(income, newCategories);
     setBudgetCategories(balanced);
@@ -340,8 +327,18 @@ export function BudgetCreator() {
   const totalAllocated = budgetCategories.reduce((sum, cat) => sum + cat.amount, 0);
   const totalPercent = budgetCategories.reduce((sum, cat) => sum + cat.percent, 0);
   const remaining = round2(income - totalAllocated);
+  /** All category percentages must sum to 100% before save. */
+  const percentagesTotal100 = Math.abs(totalPercent - 100) <= 0.01;
 
   const handleSaveBudget = async () => {
+    const sumPct = round2(budgetCategories.reduce((s, c) => s + c.percent, 0));
+    if (Math.abs(sumPct - 100) > 0.01) {
+      alert(
+        'Your category percentages must add up to exactly 100% before you can save. Adjust the percentages (or amounts) for each category and try again.',
+      );
+      return;
+    }
+
     setSaving(true);
     try {
       const payload = {
@@ -504,10 +501,14 @@ export function BudgetCreator() {
 
             <button
               onClick={handleSaveBudget}
-              disabled={saving || Math.abs(remaining) > 0.01}
+              disabled={saving || !percentagesTotal100}
               className="w-full px-6 py-4 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
             >
-              {saving ? 'Saving...' : Math.abs(remaining) > 0.01 ? 'Balance Your Budget First' : 'Save Budget'}
+              {saving
+                ? 'Saving...'
+                : !percentagesTotal100
+                  ? 'Percentages must total 100%'
+                  : 'Save Budget'}
             </button>
           </div>
 
@@ -525,8 +526,13 @@ export function BudgetCreator() {
                 </div>
                 <div className="flex items-center justify-between pb-3 border-b border-gray-200">
                   <span className="text-gray-600">Total Percent</span>
-                  <span className={`font-semibold ${totalPercent > 100 ? 'text-red-600' : 'text-gray-900'}`}>
+                  <span
+                    className={`font-semibold ${
+                      !percentagesTotal100 ? 'text-amber-600' : totalPercent > 100 ? 'text-red-600' : 'text-gray-900'
+                    }`}
+                  >
                     {totalPercent.toFixed(1)}%
+                    {percentagesTotal100 ? '' : ' (target 100%)'}
                   </span>
                 </div>
                 <div className="flex items-center justify-between pt-2">
@@ -537,17 +543,26 @@ export function BudgetCreator() {
                 </div>
               </div>
 
-              {Math.abs(remaining) > 0.01 && (
-                <div className={`mt-4 p-3 rounded-lg ${remaining < 0 ? 'bg-red-50 text-red-700' : 'bg-orange-50 text-orange-700'}`}>
+              {!percentagesTotal100 && (
+                <div className="mt-4 p-3 rounded-lg bg-amber-50 text-amber-900 border border-amber-200">
                   <p className="text-sm font-medium">
-                    {remaining < 0 ? '⚠️ Over budget! Reduce allocations.' : '💡 You have unallocated funds.'}
+                    Category percentages must total <strong>100%</strong> to save. Rework your percentage (or amount)
+                    fields until the total is 100%.
                   </p>
                 </div>
               )}
 
-              {Math.abs(remaining) < 0.01 && (
+              {percentagesTotal100 && Math.abs(remaining) > 0.01 && (
+                <div className={`mt-4 p-3 rounded-lg ${remaining < 0 ? 'bg-red-50 text-red-700' : 'bg-orange-50 text-orange-700'}`}>
+                  <p className="text-sm font-medium">
+                    {remaining < 0 ? '⚠️ Over budget! Reduce allocations.' : '💡 Allocated amounts do not match income; adjust amounts.'}
+                  </p>
+                </div>
+              )}
+
+              {percentagesTotal100 && Math.abs(remaining) < 0.01 && (
                 <div className="mt-4 p-3 rounded-lg bg-green-50 text-green-700">
-                  <p className="text-sm font-medium">✅ Budget is balanced!</p>
+                  <p className="text-sm font-medium">✅ Percentages total 100% and amounts match income.</p>
                 </div>
               )}
             </div>
@@ -583,13 +598,15 @@ export function BudgetCreator() {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <TrendingUp className="w-4 h-4 text-green-600" />
-                    <span className="text-sm text-gray-600">Savings Rate</span>
+                    <span className="text-sm text-gray-600">Largest allocation</span>
                   </div>
                   <span className="font-semibold text-gray-900">
-                    {income > 0
-                      ? (((budgetCategories.find((c) => c.name === 'Savings')?.amount || 0) / income) * 100).toFixed(1)
-                      : 0}
-                    %
+                    {income > 0 && budgetCategories.length > 0
+                      ? (() => {
+                          const top = budgetCategories.reduce((a, b) => (b.amount > a.amount ? b : a));
+                          return `${top.name} (${((top.amount / income) * 100).toFixed(1)}%)`;
+                        })()
+                      : '—'}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">

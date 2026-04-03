@@ -8,47 +8,54 @@ import { authRequired, type AuthedRequest } from "../middleware/authRequired.js"
  */
 export const dashboardRouter = Router();
 
-// Categories shown in Budget Creator / charts.
-// Keep this in sync with frontend `BudgetCreator.tsx` categoryOptions.
+// Canonical 9 categories — keep in sync with `frontend/src/app/lib/expenseCategories.ts`.
 const BUDGET_CATEGORIES = [
   "Rent",
   "Groceries",
   "Tuition",
-  "Food & Dining",
   "Transportation",
-  "Books & Supplies",
   "Entertainment",
-  "Personal Care",
-  "Health & Fitness",
   "Utilities",
-  "Savings",
+  "Health",
+  "Dining",
   "Other",
-];
+] as const;
+
+/** Map old/alt labels from older data into one of BUDGET_CATEGORIES. */
+const LEGACY_CATEGORY_MAP: Record<string, string> = {
+  "food & dining": "Dining",
+  "books & supplies": "Tuition",
+  "personal care": "Other",
+  "health & fitness": "Health",
+  savings: "Other",
+  housing: "Rent",
+};
 
 const CATEGORY_COLORS: Record<string, string> = {
-  // Common expense categories
   Rent: "#6366F1",
-  Tuition: "#A855F7",
   Groceries: "#16A34A",
+  Tuition: "#A855F7",
   Transportation: "#4ECDC4",
   Entertainment: "#F97316",
   Utilities: "#D97706",
   Health: "#0891B2",
   Dining: "#DC2626",
-
-  // Back-compat / legacy categories used in charts
-  "Food & Dining": "#DC2626",
-  "Books & Supplies": "#45B7D1",
-  Housing: "#98D8C8",
-  "Personal Care": "#BB8FCE",
-  "Health & Fitness": "#EF4444",
-  Savings: "#10B981",
-
   Other: "#95A5A6",
 };
 
 function normalizeCategory(category: string): string {
   return category.trim().toLowerCase();
+}
+
+const CANONICAL_BY_NORMALIZED = new Map(
+  BUDGET_CATEGORIES.map((c) => [normalizeCategory(c), c]),
+);
+
+function canonicalCategory(raw: string): string {
+  const n = normalizeCategory(raw);
+  const direct = CANONICAL_BY_NORMALIZED.get(n);
+  if (direct) return direct;
+  return LEGACY_CATEGORY_MAP[n] ?? "Other";
 }
 
 const CATEGORY_COLORS_NORMALIZED: Record<string, string> = Object.fromEntries(
@@ -103,8 +110,11 @@ dashboardRouter.get("/", authRequired, async (req: AuthedRequest, res) => {
   // BudgetCreator stores the total monthly budget in `totalLimit` (duplicated per category row).
   // Use the max to be resilient if a partial save occurred.
   const totalBudget = budgets.reduce((max, b) => (b.totalLimit > max ? b.totalLimit : max), 0);
-  const expenseItems = expenses.filter((e) => e.type === "EXPENSE");
-  const incomeItems = expenses.filter((e) => e.type === "INCOME");
+  const expenseItems = expenses.filter((e) => {
+    const t = (e as { type?: string }).type;
+    return t !== "INCOME";
+  });
+  const incomeItems = expenses.filter((e) => (e as { type?: string }).type === "INCOME");
 
   const totalExpense = expenseItems.reduce((sum, e) => sum + e.amount, 0);
   const totalIncome = incomeItems.reduce((sum, e) => sum + e.amount, 0);
@@ -116,7 +126,8 @@ dashboardRouter.get("/", authRequired, async (req: AuthedRequest, res) => {
   // Spending by category (for pie chart): { name, value, color }
   const spentByCategory = new Map<string, number>();
   for (const e of expenseItems) {
-    spentByCategory.set(e.category, (spentByCategory.get(e.category) ?? 0) + e.amount);
+    const cat = canonicalCategory(e.category);
+    spentByCategory.set(cat, (spentByCategory.get(cat) ?? 0) + e.amount);
   }
   // Include all BudgetCreator categories so the pie legend shows every option,
   // but 0-value categories won't render visible slices.
@@ -129,18 +140,25 @@ dashboardRouter.get("/", authRequired, async (req: AuthedRequest, res) => {
   // Remaining by category (for bar chart): { category, allocated, spent, remaining }
   const spentByCat = new Map<string, number>();
   for (const e of expenseItems) {
-    spentByCat.set(e.category, (spentByCat.get(e.category) ?? 0) + e.amount);
+    const cat = canonicalCategory(e.category);
+    spentByCat.set(cat, (spentByCat.get(cat) ?? 0) + e.amount);
   }
-  const categorySet = new Set<string>(BUDGET_CATEGORIES);
-  const remainingByCategory = Array.from(categorySet).map((category) => {
-    const allocated = budgets.find((b) => b.category === category)?.allocated ?? 0;
+
+  const allocatedByCanonical = new Map<string, number>();
+  for (const b of budgets) {
+    const cat = canonicalCategory(b.category);
+    allocatedByCanonical.set(cat, (allocatedByCanonical.get(cat) ?? 0) + b.allocated);
+  }
+
+  const remainingByCategory = BUDGET_CATEGORIES.map((category) => {
+    const allocated = allocatedByCanonical.get(category) ?? 0;
     const spent = spentByCat.get(category) ?? 0;
     return {
       category,
       allocated: Math.round(allocated * 100) / 100,
       spent: Math.round(spent * 100) / 100,
-      // "Budget Remaining" in the UI is the allocated envelope amount (positive).
-      remaining: Math.round(allocated * 100) / 100,
+      // Remaining envelope after subtracting what was actually spent.
+      remaining: Math.round((allocated - spent) * 100) / 100,
     };
   });
 

@@ -6,6 +6,7 @@ import { Calendar, DollarSign, Trash2, Plus, Save, Minus, Pencil } from 'lucide-
 import { z } from 'zod';
 import { apiJson } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
+import { STANDARD_EXPENSE_CATEGORIES } from '../lib/expenseCategories';
 
 const createExpenseSchema = z.object({
   amount: z.coerce.number().positive(),
@@ -26,17 +27,7 @@ type Expense = {
   note?: string | null;
 };
 
-const expenseCategories = [
-  'Rent',
-  'Groceries',
-  'Tuition',
-  'Transportation',
-  'Entertainment',
-  'Utilities',
-  'Health',
-  'Dining',
-  'Other',
-];
+const expenseCategories = [...STANDARD_EXPENSE_CATEGORIES];
 
 const incomeCategories = ['Paycheck', 'Scholarship', 'Gift', 'Refund', 'Other'];
 
@@ -79,7 +70,7 @@ export function Expenses() {
 
   const [type, setType] = useState<TxType>('EXPENSE');
   const [amount, setAmount] = useState('');
-  const [category, setCategory] = useState(expenseCategories[0]);
+  const [category, setCategory] = useState<string>(expenseCategories[0]);
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [note, setNote] = useState('');
   const [saving, setSaving] = useState(false);
@@ -87,7 +78,7 @@ export function Expenses() {
   const [editingItem, setEditingItem] = useState<Expense | null>(null);
   const [editType, setEditType] = useState<TxType>('EXPENSE');
   const [editAmount, setEditAmount] = useState('');
-  const [editCategory, setEditCategory] = useState(expenseCategories[0]);
+  const [editCategory, setEditCategory] = useState<string>(expenseCategories[0]);
   const [editDate, setEditDate] = useState('');
   const [editNote, setEditNote] = useState('');
   const [editSaving, setEditSaving] = useState(false);

@@ -44,7 +44,7 @@ export const aiRouter = Router();
  * Response (200):
  *   {
  *     "recommendations": [
- *       { "type": "reduce", "category": "Food & Dining", "title": "Cut dining out", "message": "..." },
+ *       { "type": "reduce", "category": "Dining", "title": "Cut dining out", "message": "..." },
  *       { "type": "keepDoing", "category": "Transportation", "title": "Great transit habits", "message": "..." },
  *       { "type": "spendMore", "category": "Health", "title": "Prioritize wellness", "message": "..." }
  *     ],

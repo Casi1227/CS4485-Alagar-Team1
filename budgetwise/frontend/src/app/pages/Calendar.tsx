@@ -49,18 +49,14 @@ function expenseToTransaction(e: {
 }
 
 const categoryColors: Record<string, string> = {
-  "Food & Dining": "#DC2626",
+  Rent: "#6366F1",
   Groceries: "#16A34A",
+  Tuition: "#A855F7",
   Transportation: "#4ECDC4",
-  "Books & Supplies": "#45B7D1",
-  Entertainment: "#FFA07A",
-  Housing: "#98D8C8",
+  Entertainment: "#F97316",
   Utilities: "#D97706",
   Health: "#0891B2",
-  "Personal Care": "#BB8FCE",
-  Rent: "#6366F1",
-  Tuition: "#A855F7",
-  Dining: "#F97316",
+  Dining: "#DC2626",
   Other: "#95A5A6",
   Paycheck: "#10B981",
   Scholarship: "#06B6D4",
