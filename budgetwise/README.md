@@ -37,6 +37,9 @@ npx prisma generate
 npx prisma migrate dev --name init
 npm run dev
 
+For mock data: npm run dev:mock
+(username and password for mock user is shown in terminal after using this command)
+
 Backend runs on:
 http://localhost:5001
 

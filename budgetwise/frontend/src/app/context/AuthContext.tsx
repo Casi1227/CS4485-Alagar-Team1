@@ -25,9 +25,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const router = useRouter();
 
+  const clearExpensesPageMonthState = () => {
+    if (typeof window === 'undefined') return;
+    window.sessionStorage.removeItem('bw_expenses_month');
+  };
+
   const clearSession = () => {
     localStorage.removeItem('bw_token');
     localStorage.removeItem('bw_user');
+    clearExpensesPageMonthState();
     setToken(null);
     setUser(null);
     setIsAuthenticated(false);
@@ -84,6 +90,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = async (email: string, password: string) => {
+    // Fresh login should reset expenses page month back to current real-world month.
+    clearExpensesPageMonthState();
     const data = await apiJson('/api/auth/login', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
@@ -106,6 +114,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const register = async (email: string, password: string, name: string) => {
+    // Fresh registration/login should reset expenses page month back to current real-world month.
+    clearExpensesPageMonthState();
     const data = await apiJson('/api/auth/register', {
       method: 'POST',
       body: JSON.stringify({ email, password, name }),

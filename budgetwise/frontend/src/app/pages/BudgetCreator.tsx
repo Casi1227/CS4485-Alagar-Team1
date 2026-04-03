@@ -129,34 +129,16 @@ export function BudgetCreator() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  const [{ month, year }, setMonthYear] = useState(() => getMonthYear());
+  // Same month/year as the dashboard default (real-world calendar month) so saved budgets
+  // match what the dashboard reads for total budget and per-category bars.
+  const [period] = useState(() => getMonthYear());
+  const { month, year } = period;
 
-  // Time-sync rule: default Budget Creator to the most-recent month that has any transactions.
-  // If user has no transactions, fall back to the real current month.
-  useEffect(() => {
-    let cancelled = false;
-    apiJson('/api/expenses')
-      .then((data: { expenses?: unknown[] }) => {
-        if (cancelled) return;
-        const items = (data?.expenses || []) as { date: string }[];
-        if (items.length === 0) return;
-
-        let max = new Date(items[0].date);
-        for (const it of items) {
-          const d = new Date(it.date);
-          if (!Number.isNaN(d.getTime()) && d > max) max = d;
-        }
-
-        setMonthYear({ month: max.getMonth() + 1, year: max.getFullYear() });
-      })
-      .catch(() => {
-        // ignore
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const budgetPeriodLabel = useMemo(
+    () =>
+      new Date(year, month - 1, 1).toLocaleString('en-US', { month: 'long', year: 'numeric' }),
+    [month, year],
+  );
 
   const income = useMemo(() => {
     const n = parseFloat(totalIncome);
@@ -381,6 +363,7 @@ export function BudgetCreator() {
             <h1 className="text-4xl font-bold text-gray-900">AI Budget Creator</h1>
           </div>
           <p className="text-gray-600">Let AI help you create an optimized budget based on your income and goals</p>
+          <p className="text-sm text-indigo-700 font-medium mt-2">Editing budget for {budgetPeriodLabel}</p>
         </div>
 
         <div className="mb-8 bg-white rounded-xl shadow-lg p-6 border border-gray-100">

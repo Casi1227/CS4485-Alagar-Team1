@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Calendar, DollarSign, Trash2, Plus, Save, Minus, Pencil } from 'lucide-react';
+import { Calendar, DollarSign, Trash2, Plus, Save, Minus, Pencil, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { z } from 'zod';
 import { apiJson } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
@@ -49,23 +49,44 @@ export function Expenses() {
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [showForm, setShowForm] = useState(false);
 
-  const mostRecentMonthDate = useMemo(() => {
-    if (items.length === 0) return new Date();
-    let max = new Date(items[0].date);
-    for (const it of items) {
-      const d = new Date(it.date);
-      if (!Number.isNaN(d.getTime()) && d > max) max = d;
-    }
-    return max;
-  }, [items]);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleteConfirmIds, setDeleteConfirmIds] = useState<string[]>([]);
+  const [deleteConfirmSaving, setDeleteConfirmSaving] = useState(false);
+  const [search, setSearch] = useState("");
 
-  const activeMonthLabel = useMemo(
+  type HistoryScope = "MONTH" | "YEAR" | "ALL";
+  type HistoryType = "ALL" | TxType;
+
+  const [historyScope, setHistoryScope] = useState<HistoryScope>("MONTH");
+  const [historyType, setHistoryType] = useState<HistoryType>("ALL");
+  const [historyCategory, setHistoryCategory] = useState<string>("ALL");
+
+  const MONTH_SESSION_KEY = 'bw_expenses_month';
+
+  const [selectedMonthDate, setSelectedMonthDate] = useState<Date>(() => {
+    const now = new Date();
+    const currentMonthDate = new Date(now.getFullYear(), now.getMonth(), 1);
+    if (typeof window === 'undefined') return new Date();
+    const saved = window.sessionStorage.getItem('bw_expenses_month');
+    if (!saved) return currentMonthDate;
+    const m = /^(\d{4})-(\d{1,2})$/.exec(saved);
+    if (!m) return currentMonthDate;
+    const year = Number(m[1]);
+    const month1 = Number(m[2]);
+    if (!Number.isFinite(year) || !Number.isFinite(month1)) return currentMonthDate;
+    return new Date(year, month1 - 1, 1);
+  });
+
+  const [monthPickerOpen, setMonthPickerOpen] = useState(false);
+
+  const selectedMonthLabel = useMemo(
     () =>
-      mostRecentMonthDate.toLocaleDateString('en-US', {
+      selectedMonthDate.toLocaleDateString('en-US', {
         month: 'long',
         year: 'numeric',
       }),
-    [mostRecentMonthDate],
+    [selectedMonthDate],
   );
 
   const [type, setType] = useState<TxType>('EXPENSE');
@@ -116,6 +137,7 @@ export function Expenses() {
           note: e.note,
         })),
       );
+      setSelectedIds([]);
     } catch (e: any) {
       setError(e?.message || 'Failed to load expenses');
     } finally {
@@ -127,26 +149,138 @@ export function Expenses() {
     if (isAuthenticated) refresh();
   }, [isAuthenticated]);
 
-  const totals = useMemo(() => {
-    const y = mostRecentMonthDate.getFullYear();
-    const m = mostRecentMonthDate.getMonth();
-
-    const thisMonthItems = items.filter((x) => {
+  const monthItems = useMemo(() => {
+    const y = selectedMonthDate.getFullYear();
+    const m = selectedMonthDate.getMonth();
+    return items.filter((x) => {
       const d = new Date(x.date);
       return d.getFullYear() === y && d.getMonth() === m;
     });
+  }, [items, selectedMonthDate]);
 
-    const incomeTotal = thisMonthItems
+  const availableCategories = useMemo(() => {
+    if (historyType === "EXPENSE") return expenseCategories;
+    if (historyType === "INCOME") return incomeCategories;
+    return [...expenseCategories, ...incomeCategories];
+  }, [historyType]);
+
+  const uniqueAvailableCategories = useMemo(() => {
+    return Array.from(new Set(availableCategories));
+  }, [availableCategories]);
+
+  useEffect(() => {
+    if (historyCategory === "ALL") return;
+    if (uniqueAvailableCategories.includes(historyCategory)) return;
+    setHistoryCategory("ALL");
+  }, [uniqueAvailableCategories, historyCategory]);
+
+  const scopeItems = useMemo(() => {
+    if (historyScope === "MONTH") return monthItems;
+
+    const selectedYear = selectedMonthDate.getFullYear();
+    if (historyScope === "YEAR") {
+      return items.filter((x) => {
+        const d = new Date(x.date);
+        return d.getFullYear() === selectedYear;
+      });
+    }
+
+    // ALL
+    return items;
+  }, [historyScope, items, monthItems, selectedMonthDate]);
+
+  const visibleItems = useMemo(() => {
+    const q = search.trim().toLowerCase();
+
+    let list = scopeItems;
+
+    if (historyType !== "ALL") {
+      list = list.filter((t) => t.type === historyType);
+    }
+
+    if (historyCategory !== "ALL") {
+      list = list.filter((t) => t.category === historyCategory);
+    }
+
+    if (!q) return list;
+
+    return list.filter((t) => {
+      const note = t.note ?? "";
+      return `${t.category} ${note}`.toLowerCase().includes(q);
+    });
+  }, [scopeItems, historyType, historyCategory, search]);
+
+  useEffect(() => {
+    // Clear row selections whenever the visible list changes.
+    setSelectedIds([]);
+  }, [historyScope, historyType, historyCategory, search, selectedMonthDate]);
+
+  const monthsWithData = useMemo(() => {
+    const map = new Map<string, Date>();
+    for (const it of items) {
+      const d = new Date(it.date);
+      if (Number.isNaN(d.getTime())) continue;
+      const key = `${d.getFullYear()}-${d.getMonth() + 1}`;
+      if (!map.has(key)) map.set(key, new Date(d.getFullYear(), d.getMonth(), 1));
+    }
+    const arr = Array.from(map.values());
+    arr.sort((a, b) => a.getTime() - b.getTime());
+    return arr;
+  }, [items]);
+
+  const selectMonth = (d: Date) => {
+    const normalized = new Date(d.getFullYear(), d.getMonth(), 1);
+    setSelectedMonthDate(normalized);
+    setMonthPickerOpen(false);
+    setSelectedIds([]);
+    setDeleteConfirmOpen(false);
+    setDeleteConfirmIds([]);
+    setDeleteConfirmSaving(false);
+    setError(null);
+  };
+
+  const goMonth = (delta: number) => {
+    const next = new Date(selectedMonthDate.getFullYear(), selectedMonthDate.getMonth() + delta, 1);
+    selectMonth(next);
+  };
+
+  // Persist month selection for the current browser session.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const selectedKey = `${selectedMonthDate.getFullYear()}-${selectedMonthDate.getMonth() + 1}`;
+    window.sessionStorage.setItem(MONTH_SESSION_KEY, selectedKey);
+  }, [selectedMonthDate]);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+      if (showForm || editingItem || deleteConfirmOpen || monthPickerOpen) return;
+
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName?.toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+      if ((target as any)?.isContentEditable) return;
+
+      e.preventDefault();
+      goMonth(e.key === 'ArrowLeft' ? -1 : 1);
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [editingItem, showForm, deleteConfirmOpen, monthPickerOpen, selectedMonthDate]);
+
+  const totals = useMemo(() => {
+    const incomeTotal = monthItems
       .filter((x) => x.type === 'INCOME')
       .reduce((s, x) => s + (x.amount || 0), 0);
 
-    const expenseTotal = thisMonthItems
+    const expenseTotal = monthItems
       .filter((x) => x.type === 'EXPENSE')
       .reduce((s, x) => s + (x.amount || 0), 0);
 
     const net = incomeTotal - expenseTotal;
     return { incomeTotal, expenseTotal, net };
-  }, [items]);
+  }, [monthItems]);
 
   const onAdd = async () => {
     setSaving(true);
@@ -212,13 +346,43 @@ export function Expenses() {
     }
   };
 
-  const onDelete = async (id: string) => {
+  const toggleSelected = (id: string) => {
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  };
+
+  const openDeleteConfirm = (ids: string[]) => {
+    setDeleteConfirmIds(ids);
+    setDeleteConfirmOpen(true);
+    setDeleteConfirmSaving(false);
     setError(null);
+  };
+
+  const closeDeleteConfirm = () => {
+    setDeleteConfirmOpen(false);
+    setDeleteConfirmIds([]);
+    setDeleteConfirmSaving(false);
+  };
+
+  const confirmDelete = async () => {
+    if (deleteConfirmIds.length === 0) return;
+
+    setDeleteConfirmSaving(true);
+    setError(null);
+
     try {
-      await apiJson(`/api/expenses/${id}`, { method: 'DELETE' });
-      setItems((prev) => prev.filter((x) => x.id !== id));
+      await Promise.all(
+        deleteConfirmIds.map(async (id) => {
+          await apiJson(`/api/expenses/${id}`, { method: 'DELETE' });
+        }),
+      );
+
+      setSelectedIds([]);
+      closeDeleteConfirm();
+      await refresh();
     } catch (e: any) {
-      setError(e?.message || 'Failed to delete item');
+      setError(e?.message || 'Failed to delete item(s)');
+    } finally {
+      setDeleteConfirmSaving(false);
     }
   };
 
@@ -330,21 +494,76 @@ export function Expenses() {
           <div className="mb-4 p-3 rounded-lg border border-red-200 bg-red-50 text-red-700">{error}</div>
         ) : null}
 
+        <div className="flex items-center justify-between gap-4 mb-6">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => goMonth(-1)}
+              className="p-2 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors"
+              aria-label="Previous month"
+              disabled={monthPickerOpen}
+            >
+              <ChevronLeft className="w-5 h-5 text-gray-700" />
+            </button>
+            <div className="text-sm text-gray-600">
+              Viewing <span className="font-semibold text-gray-900">{selectedMonthLabel}</span>
+            </div>
+            <button
+              onClick={() => goMonth(1)}
+              className="p-2 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors"
+              aria-label="Next month"
+              disabled={monthPickerOpen}
+            >
+              <ChevronRight className="w-5 h-5 text-gray-700" />
+            </button>
+          </div>
+
+          <div className="relative">
+            <button
+              onClick={() => setMonthPickerOpen((v) => !v)}
+              className="px-4 py-2 border border-gray-200 rounded-lg bg-white hover:bg-gray-50 transition-colors text-sm font-semibold text-gray-700"
+              aria-label="Pick month"
+              disabled={loading}
+            >
+              Pick month
+            </button>
+
+            {monthPickerOpen ? (
+              <div className="absolute right-0 mt-2 w-72 bg-white border border-gray-200 rounded-xl shadow-lg max-h-64 overflow-y-auto p-2 z-10">
+                {(monthsWithData.length > 0 ? monthsWithData : [selectedMonthDate]).map((d) => {
+                  const isSelected =
+                    d.getFullYear() === selectedMonthDate.getFullYear() && d.getMonth() === selectedMonthDate.getMonth();
+                  return (
+                    <button
+                      key={`${d.getFullYear()}-${d.getMonth() + 1}`}
+                      onClick={() => selectMonth(d)}
+                      className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
+                        isSelected ? 'bg-indigo-50 text-indigo-700' : 'hover:bg-gray-50 text-gray-700'
+                      }`}
+                    >
+                      {d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : null}
+          </div>
+        </div>
+
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
           <div className="bg-white rounded-xl shadow-lg p-4 border border-gray-100">
-            <div className="text-sm text-gray-600">Income ({activeMonthLabel})</div>
+            <div className="text-sm text-gray-600">Income ({selectedMonthLabel})</div>
             <div className="text-lg font-semibold text-green-700 flex items-center gap-1">
               <DollarSign className="w-4 h-4" /> {totals.incomeTotal.toFixed(2)}
             </div>
           </div>
           <div className="bg-white rounded-xl shadow-lg p-4 border border-gray-100">
-            <div className="text-sm text-gray-600">Expenses ({activeMonthLabel})</div>
+            <div className="text-sm text-gray-600">Expenses ({selectedMonthLabel})</div>
             <div className="text-lg font-semibold text-red-700 flex items-center gap-1">
               <DollarSign className="w-4 h-4" /> {totals.expenseTotal.toFixed(2)}
             </div>
           </div>
           <div className="bg-white rounded-xl shadow-lg p-4 border border-gray-100">
-            <div className="text-sm text-gray-600">Net ({activeMonthLabel})</div>
+            <div className="text-sm text-gray-600">Net ({selectedMonthLabel})</div>
             <div
               className={`text-lg font-semibold flex items-center gap-1 ${
                 totals.net >= 0 ? 'text-gray-900' : 'text-red-700'
@@ -442,6 +661,73 @@ export function Expenses() {
         <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-100">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold text-gray-900">History</h2>
+            {selectedIds.length > 0 ? (
+              <button
+                onClick={() => openDeleteConfirm(selectedIds)}
+                className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors inline-flex items-center gap-2"
+                disabled={deleteConfirmSaving}
+              >
+                <Trash2 className="w-4 h-4" />
+                Delete Selected ({selectedIds.length})
+              </button>
+            ) : null}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Scope</label>
+              <select
+                value={historyScope}
+                onChange={(e) => setHistoryScope(e.target.value as HistoryScope)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+              >
+                <option value="MONTH">Month</option>
+                <option value="YEAR">Year</option>
+                <option value="ALL">All time</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
+              <select
+                value={historyType}
+                onChange={(e) => {
+                  const next = e.target.value as HistoryType;
+                  setHistoryType(next);
+                  setHistoryCategory("ALL");
+                }}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+              >
+                <option value="ALL">All</option>
+                <option value="EXPENSE">Expenses</option>
+                <option value="INCOME">Income</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
+              <select
+                value={historyCategory}
+                onChange={(e) => setHistoryCategory(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+              >
+                <option value="ALL">All</option>
+                  {uniqueAvailableCategories.map((c) => (
+                    <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="mb-4">
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search category or note"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+            />
           </div>
 
           {loading ? (
@@ -451,6 +737,17 @@ export function Expenses() {
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-gray-200">
+                    <th className="py-3 px-4 text-sm font-semibold text-gray-600 text-center w-16">
+                      <input
+                        type="checkbox"
+                        aria-label="Select all transactions"
+                        checked={visibleItems.length > 0 && selectedIds.length === visibleItems.length}
+                        onChange={(e) => {
+                          if (e.target.checked) setSelectedIds(visibleItems.map((i) => i.id));
+                          else setSelectedIds([]);
+                        }}
+                      />
+                    </th>
                     <th className="text-left py-3 px-4 text-sm font-semibold text-gray-600">Date</th>
                     <th className="text-left py-3 px-4 text-sm font-semibold text-gray-600">Type</th>
                     <th className="text-left py-3 px-4 text-sm font-semibold text-gray-600">Category</th>
@@ -460,10 +757,22 @@ export function Expenses() {
                   </tr>
                 </thead>
                 <tbody>
-                  {items.map((x) => {
+                  {visibleItems.map((x) => {
                     const isIncome = x.type === 'INCOME';
+                    const isSelected = selectedIds.includes(x.id);
                     return (
-                      <tr key={x.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                      <tr
+                        key={x.id}
+                        className={`border-b border-gray-100 transition-colors ${isSelected ? 'bg-indigo-50' : 'hover:bg-gray-50'}`}
+                      >
+                        <td className="py-3 px-4 text-center">
+                          <input
+                            type="checkbox"
+                            aria-label={`Select transaction ${x.category}`}
+                            checked={isSelected}
+                            onChange={() => toggleSelected(x.id)}
+                          />
+                        </td>
                         <td className="py-3 px-4">
                           <div className="flex items-center gap-2 text-sm text-gray-600">
                             <Calendar className="w-4 h-4" />
@@ -510,7 +819,7 @@ export function Expenses() {
                               <Pencil className="w-4 h-4 text-indigo-600" />
                             </button>
                             <button
-                              onClick={() => onDelete(x.id)}
+                              onClick={() => openDeleteConfirm([x.id])}
                               className="inline-flex items-center justify-center p-2 hover:bg-red-50 rounded-lg transition-colors"
                               aria-label="Delete"
                             >
@@ -524,7 +833,9 @@ export function Expenses() {
                 </tbody>
               </table>
 
-              {items.length === 0 ? <div className="text-sm text-gray-600 mt-4">No items yet.</div> : null}
+              {visibleItems.length === 0 ? (
+                <div className="text-sm text-gray-600 mt-4">No matching transactions.</div>
+              ) : null}
             </div>
           )}
         </div>
@@ -624,6 +935,38 @@ export function Expenses() {
               >
                 <Save className="w-4 h-4" />
                 <span>{editSaving ? 'Saving...' : 'Save changes'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {deleteConfirmOpen ? (
+        <div className="fixed inset-0 z-30 flex items-center justify-center bg-black/30 backdrop-blur-sm">
+          <div className="bg-white rounded-xl shadow-2xl border border-gray-100 w-full max-w-lg p-6 relative">
+            <button
+              onClick={closeDeleteConfirm}
+              className="absolute top-3 right-3 text-gray-500 hover:text-gray-700"
+              aria-label="Cancel delete"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <h2 className="text-lg font-semibold text-gray-900 mb-2">Delete Transaction</h2>
+            <p className="text-sm text-gray-600">
+              {deleteConfirmIds.length === 1
+                ? 'Are you sure you want to delete this transaction?'
+                : 'Are you sure you want to delete these transactions?'}
+            </p>
+
+            <div className="mt-6 flex items-center justify-end gap-3">
+              <button
+                onClick={confirmDelete}
+                disabled={deleteConfirmSaving}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-60"
+              >
+                <Trash2 className="w-4 h-4" />
+                {deleteConfirmSaving ? 'Deleting...' : 'Delete'}
               </button>
             </div>
           </div>

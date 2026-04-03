@@ -83,17 +83,6 @@ export function Dashboard() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
           <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-100">
             <div className="flex items-center justify-between mb-4">
-              <div className="p-3 bg-blue-100 rounded-lg">
-                <DollarSign className="w-6 h-6 text-blue-600" />
-              </div>
-              <span className="text-sm text-gray-500">Total Budget</span>
-            </div>
-            <div className="text-3xl font-bold text-gray-900">${totalBudget.toFixed(2)}</div>
-            <p className="text-sm text-gray-500 mt-2">This month&apos;s budget</p>
-          </div>
-
-          <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-100">
-            <div className="flex items-center justify-between mb-4">
               <div className="p-3 bg-green-100 rounded-lg">
                 <TrendingUp className="w-6 h-6 text-green-600" />
               </div>
@@ -101,6 +90,17 @@ export function Dashboard() {
             </div>
             <div className="text-3xl font-bold text-gray-900">${totalIncome.toFixed(2)}</div>
             <p className="text-sm text-gray-500 mt-2">This month&apos;s income</p>
+          </div>
+
+          <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-100">
+            <div className="flex items-center justify-between mb-4">
+              <div className="p-3 bg-blue-100 rounded-lg">
+                <DollarSign className="w-6 h-6 text-blue-600" />
+              </div>
+              <span className="text-sm text-gray-500">Total Budget</span>
+            </div>
+            <div className="text-3xl font-bold text-gray-900">${totalBudget.toFixed(2)}</div>
+            <p className="text-sm text-gray-500 mt-2">This month&apos;s budget</p>
           </div>
 
           <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-100">

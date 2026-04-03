@@ -4,7 +4,7 @@ import { authRequired, type AuthedRequest } from "../middleware/authRequired.js"
 
 /**
  * Dashboard summary: spend totals, category breakdown, budget progress for a given month.
- * GET /api/dashboard?month=3&year=2026 (month/year optional; default = current)
+ * GET /api/dashboard?month=3&year=2026 (month/year optional; default = real-world current month)
  */
 export const dashboardRouter = Router();
 
@@ -72,24 +72,22 @@ dashboardRouter.get("/", authRequired, async (req: AuthedRequest, res) => {
   const userId = req.user!.id;
   const now = new Date();
 
-  const monthParam = req.query.month ? Number(req.query.month) : undefined;
-  const yearParam = req.query.year ? Number(req.query.year) : undefined;
+  const monthParam = req.query.month !== undefined ? Number(req.query.month) : undefined;
+  const yearParam = req.query.year !== undefined ? Number(req.query.year) : undefined;
 
-  // Time-sync rule: default to the most-recent month that has any transactions.
-  // If user has no transactions, fall back to the real current month.
   let month = monthParam;
   let year = yearParam;
 
-  if (!month || !year) {
-    const latest = await prisma.expense.findFirst({
-      where: { userId },
-      orderBy: { date: "desc" },
-      select: { date: true },
-    });
+  const monthValid =
+    month != null && Number.isFinite(month) && month >= 1 && month <= 12;
+  const yearValid =
+    year != null && Number.isFinite(year) && year >= 1970 && year <= 2100;
 
-    const anchor = latest?.date ?? now;
-    if (!month) month = anchor.getMonth() + 1;
-    if (!year) year = anchor.getFullYear();
+  // Default to the real-world calendar month (not the latest expense date), so mock or
+  // future-dated data does not shift the dashboard away from "today".
+  if (!monthValid || !yearValid) {
+    month = now.getMonth() + 1;
+    year = now.getFullYear();
   }
 
   const startOfMonth = new Date(year, month - 1, 1);
@@ -157,8 +155,8 @@ dashboardRouter.get("/", authRequired, async (req: AuthedRequest, res) => {
       category,
       allocated: Math.round(allocated * 100) / 100,
       spent: Math.round(spent * 100) / 100,
-      // Remaining envelope after subtracting what was actually spent.
-      remaining: Math.round((allocated - spent) * 100) / 100,
+      // "Budget Remaining" bar uses the allocated budget from Budget Creator.
+      remaining: Math.round(allocated * 100) / 100,
     };
   });
 
