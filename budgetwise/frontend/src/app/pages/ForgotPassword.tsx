@@ -65,7 +65,7 @@ export function ForgotPassword() {
                 return;
             }
 
-            setMessage("If this email exists, a reset link has been sent.");
+            setMessage("A reset link has been sent.");
             setEmail("");
         } catch (err) {
             setError("Unable to send reset link right now.");
