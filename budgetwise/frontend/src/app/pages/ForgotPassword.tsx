@@ -3,6 +3,36 @@
 import { useState } from "react";
 import { CreditCard, Mail, TrendingUp, PieChart, DollarSign } from "lucide-react";
 
+function getErrorMessage(error: unknown): string {
+    if (typeof error === "string") return error;
+
+    if (
+        error &&
+        typeof error === "object" &&
+        "formErrors" in error &&
+        Array.isArray((error as { formErrors?: unknown[] }).formErrors)
+    ) {
+        const formErrors = (error as { formErrors?: string[] }).formErrors;
+        if (formErrors && formErrors.length > 0) return formErrors[0];
+    }
+
+    if (
+        error &&
+        typeof error === "object" &&
+        "fieldErrors" in error &&
+        typeof (error as { fieldErrors?: unknown }).fieldErrors === "object"
+    ) {
+        const fieldErrors = (error as { fieldErrors?: Record<string, string[]> }).fieldErrors;
+        if (fieldErrors) {
+            for (const value of Object.values(fieldErrors)) {
+                if (Array.isArray(value) && value.length > 0) return value[0];
+            }
+        }
+    }
+
+    return "Something went wrong.";
+}
+
 export function ForgotPassword() {
     const [email, setEmail] = useState("");
     const [message, setMessage] = useState("");
@@ -31,7 +61,7 @@ export function ForgotPassword() {
             const data = await response.json();
 
             if (!response.ok) {
-                setError(data?.error || "Unable to send reset link.");
+                setError(getErrorMessage(data?.error) || "Unable to send reset link.");
                 return;
             }
 
