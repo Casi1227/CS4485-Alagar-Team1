@@ -12,3 +12,29 @@ export const upsertBudgetSchema = z.object({
   totalLimit: z.number().nonnegative(),
   categories: z.array(budgetCategorySchema).min(1),
 });
+
+export const aiBudgetSuggestionCategoryInputSchema = z.object({
+  category: z.string().trim().min(1).max(80),
+  allocated: z.number().nonnegative(),
+  percent: z.number().min(0).max(100),
+});
+
+export const aiBudgetSuggestionsRequestSchema = z.object({
+  income: z.number().positive(),
+  month: z.number().int().min(1).max(12),
+  year: z.number().int().min(1970).max(3000),
+  categories: z.array(aiBudgetSuggestionCategoryInputSchema).min(1).max(20),
+});
+
+export const aiBudgetSuggestionItemSchema = z.object({
+  category: z.string().trim().min(1).max(80),
+  percent: z.number().min(0).max(100),
+});
+
+export const aiBudgetSuggestionsResponseSchema = z.object({
+  suggestions: z.array(aiBudgetSuggestionItemSchema).min(1),
+  generatedAt: z.string().datetime(),
+});
+
+export type AiBudgetSuggestionsRequest = z.infer<typeof aiBudgetSuggestionsRequestSchema>;
+export type AiBudgetSuggestionsResponse = z.infer<typeof aiBudgetSuggestionsResponseSchema>;

@@ -7,6 +7,25 @@
 
 const baseUrl = (process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5001').replace(/\/$/, '');
 
+export type AiBudgetSuggestionsRequest = {
+  income: number;
+  month: number;
+  year: number;
+  categories: Array<{
+    category: string;
+    allocated: number;
+    percent: number;
+  }>;
+};
+
+export type AiBudgetSuggestionsResponse = {
+  suggestions: Array<{
+    category: string;
+    percent: number;
+  }>;
+  generatedAt: string;
+};
+
 export async function apiJson(path: string, init: RequestInit = {}) {
   const url = `${baseUrl}${path.startsWith('/') ? path : `/${path}`}`;
 
@@ -25,6 +44,17 @@ export async function apiJson(path: string, init: RequestInit = {}) {
     throw new Error(typeof msg === 'string' ? msg : 'Request failed');
   }
   return data;
+}
+
+export function fetchAiBudgetSuggestions(
+  payload: AiBudgetSuggestionsRequest,
+  init: RequestInit = {},
+): Promise<AiBudgetSuggestionsResponse> {
+  return apiJson('/api/ai/budget-suggestions', {
+    ...init,
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
 }
 
 function safeJsonParse(text: string) {

@@ -4,8 +4,10 @@ import { authRequired, type AuthedRequest } from "../middleware/authRequired.js"
 import {
   generateDashboardInsights,
   generateBudgetComparison,
+  generateBudgetSuggestions,
   CategorySpendSummary,
 } from "../services/aiInsights.js";
+import { aiBudgetSuggestionsRequestSchema } from "../validators/budgetSchemas.js";
 
 /**
  * ===== AI Insights Router =====
@@ -219,6 +221,105 @@ aiRouter.get("/dashboard-insights", authRequired, async (req: AuthedRequest, res
     console.error("[AI Route] Dashboard insights error:", error);
     return res.status(500).json({
       error: "An error occurred while generating recommendations.",
+    });
+  }
+});
+
+aiRouter.post("/budget-suggestions", authRequired, async (req: AuthedRequest, res) => {
+  const userId = req.user!.id;
+  const parsedBody = aiBudgetSuggestionsRequestSchema.safeParse(req.body);
+
+  if (!parsedBody.success) {
+    return res.status(422).json({
+      error: "Invalid request payload for AI budget suggestions.",
+      details: parsedBody.error.flatten(),
+    });
+  }
+
+  const payload = parsedBody.data;
+
+  try {
+    const endOfTargetMonth = new Date(payload.year, payload.month, 0, 23, 59, 59, 999);
+    const recentStart = new Date(endOfTargetMonth);
+    recentStart.setMonth(recentStart.getMonth() - 3);
+    recentStart.setDate(1);
+    recentStart.setHours(0, 0, 0, 0);
+
+    const [expenses, budgets] = await Promise.all([
+      prisma.expense.findMany({
+        where: {
+          userId,
+          date: { gte: recentStart, lte: endOfTargetMonth },
+        },
+      }),
+      prisma.budget.findMany({
+        where: {
+          userId,
+          month: payload.month,
+          year: payload.year,
+        },
+      }),
+    ]);
+
+    const spendByCategory = new Map<string, number>();
+    const budgetByCategory = new Map<string, number>();
+
+    for (const expense of expenses) {
+      if (expense.type !== "EXPENSE") continue;
+      spendByCategory.set(expense.category, (spendByCategory.get(expense.category) ?? 0) + expense.amount);
+    }
+
+    for (const budget of budgets) {
+      budgetByCategory.set(budget.category, (budgetByCategory.get(budget.category) ?? 0) + budget.allocated);
+    }
+
+    const allCategories = new Set([...spendByCategory.keys(), ...budgetByCategory.keys()]);
+    const spendingSummary: CategorySpendSummary[] = Array.from(allCategories).map((category) => ({
+      category,
+      spent: spendByCategory.get(category) ?? 0,
+      allocated: budgetByCategory.get(category) ?? 0,
+    }));
+
+    const suggestions = await generateBudgetSuggestions(payload, spendingSummary);
+    return res.json(suggestions);
+  } catch (aiError) {
+    if (aiError instanceof Error && aiError.message.includes("GROQ_API_KEY not configured")) {
+      return res.status(503).json({
+        error: "AI insights are not available. Please contact support.",
+      });
+    }
+
+    const aiMessage = aiError instanceof Error ? aiError.message : String(aiError);
+
+    if (
+      aiMessage.includes("No supported Groq model is available") ||
+      (aiMessage.toLowerCase().includes("model") &&
+        (aiMessage.toLowerCase().includes("not found") ||
+          aiMessage.toLowerCase().includes("unavailable") ||
+          aiMessage.toLowerCase().includes("not supported") ||
+          aiMessage.toLowerCase().includes("does not have access") ||
+          aiMessage.toLowerCase().includes("permission denied") ||
+          aiMessage.toLowerCase().includes("not allowed") ||
+          aiMessage.toLowerCase().includes("rate limit") ||
+          aiMessage.includes("404") ||
+          aiMessage.includes("429")))
+    ) {
+      return res.status(502).json({
+        error: "AI provider model is unavailable. Please try again later or update model configuration.",
+      });
+    }
+
+    if (
+      aiMessage.toLowerCase().includes("failed validation") ||
+      aiMessage.toLowerCase().includes("invalid json")
+    ) {
+      return res.status(422).json({
+        error: "Failed to generate valid AI suggestions. Please try again.",
+      });
+    }
+
+    return res.status(502).json({
+      error: "AI service is temporarily unavailable. Please try again later.",
     });
   }
 });

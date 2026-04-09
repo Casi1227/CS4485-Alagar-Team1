@@ -32,6 +32,7 @@ const LEGACY_CATEGORY_MAP: Record<string, string> = {
 };
 
 const CATEGORY_COLORS: Record<string, string> = {
+  // Canonical expense categories
   Rent: "#6366F1",
   Groceries: "#16A34A",
   Tuition: "#A855F7",

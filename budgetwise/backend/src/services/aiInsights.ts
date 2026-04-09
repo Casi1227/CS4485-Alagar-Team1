@@ -1,6 +1,11 @@
 import Groq from "groq-sdk";
 import { z } from "zod";
 import { env } from "../config/env.js";
+import {
+  aiBudgetSuggestionsResponseSchema,
+  type AiBudgetSuggestionsRequest,
+  type AiBudgetSuggestionsResponse,
+} from "../validators/budgetSchemas.js";
 
 /**
  * ===== Schema Definitions =====
@@ -232,10 +237,50 @@ function buildBudgetComparisonResponseFormat(mode: OutputMode): Record<string, u
   };
 }
 
+function buildBudgetSuggestionsResponseFormat(mode: OutputMode): Record<string, unknown> {
+  if (mode === "json-object") {
+    return { type: "json_object" };
+  }
+
+  return {
+    type: "json_schema",
+    json_schema: {
+      name: "budget_suggestions_response",
+      strict: mode === "strict-json-schema",
+      schema: {
+        type: "object",
+        properties: {
+          suggestions: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                category: { type: "string" },
+                percent: { type: "number", minimum: 0, maximum: 100 },
+              },
+              required: ["category", "percent"],
+              additionalProperties: false,
+            },
+            minItems: 1,
+          },
+          generatedAt: { type: "string" },
+        },
+        required: ["suggestions", "generatedAt"],
+        additionalProperties: false,
+      },
+    },
+  };
+}
+
 function calculateInsightsTokenBudget(categoryCount: number): number {
   const adaptiveBudget = 220 + categoryCount * 32;
   const boundedAdaptiveBudget = Math.max(300, adaptiveBudget);
   return Math.min(env.GROQ_MAX_TOKENS_INSIGHTS, boundedAdaptiveBudget);
+}
+
+function calculateBudgetSuggestionsTokenBudget(categoryCount: number): number {
+  const adaptiveBudget = 180 + categoryCount * 40;
+  return Math.min(env.GROQ_MAX_TOKENS_COMPARISON, Math.max(280, adaptiveBudget));
 }
 
 /**
@@ -375,6 +420,324 @@ export async function generateDashboardInsights(
 
 function normalizeCategory(category: string): string {
   return category.trim().toLowerCase();
+}
+
+function normalizeCategoryLoose(category: string): string {
+  return normalizeCategory(category).replace(/[^a-z0-9]/g, "");
+}
+
+type ParsedSuggestionItem = { category: string; percent: number };
+
+function toFiniteNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "string") {
+    const normalized = value.trim().replace(/%/g, "");
+    const parsed = Number(normalized);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+  return null;
+}
+
+function parseSuggestionObject(value: unknown): ParsedSuggestionItem | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const item = value as Record<string, unknown>;
+  const categoryRaw = item.category ?? item.name ?? item.label;
+  const percentRaw = item.percent ?? item.percentage ?? item.allocation ?? item.share;
+
+  if (typeof categoryRaw !== "string") {
+    return null;
+  }
+
+  const percent = toFiniteNumber(percentRaw);
+  if (percent === null) {
+    return null;
+  }
+
+  return {
+    category: categoryRaw,
+    percent,
+  };
+}
+
+function extractSuggestionItems(parsed: unknown): ParsedSuggestionItem[] {
+  if (!parsed || typeof parsed !== "object") {
+    return [];
+  }
+
+  const root = parsed as Record<string, unknown>;
+  const fromSuggestionsArray = Array.isArray(root.suggestions)
+    ? root.suggestions.map(parseSuggestionObject).filter((item): item is ParsedSuggestionItem => item !== null)
+    : [];
+
+  if (fromSuggestionsArray.length > 0) {
+    return fromSuggestionsArray;
+  }
+
+  const fromItemsArray = Array.isArray(root.items)
+    ? root.items.map(parseSuggestionObject).filter((item): item is ParsedSuggestionItem => item !== null)
+    : [];
+
+  if (fromItemsArray.length > 0) {
+    return fromItemsArray;
+  }
+
+  const fromAllocationsObject = root.allocations && typeof root.allocations === "object"
+    ? Object.entries(root.allocations as Record<string, unknown>)
+        .map(([category, percentValue]) => {
+          const percent = toFiniteNumber(percentValue);
+          if (percent === null) {
+            return null;
+          }
+          return { category, percent };
+        })
+        .filter((item): item is ParsedSuggestionItem => item !== null)
+    : [];
+
+  if (fromAllocationsObject.length > 0) {
+    return fromAllocationsObject;
+  }
+
+  const fromRootObject = Object.entries(root)
+    .map(([category, percentValue]) => {
+      const percent = toFiniteNumber(percentValue);
+      if (percent === null) {
+        return null;
+      }
+      return { category, percent };
+    })
+    .filter((item): item is ParsedSuggestionItem => item !== null);
+
+  return fromRootObject;
+}
+
+function normalizeSuggestionPercents(rawPercents: number[]): number[] {
+  const clamped = rawPercents.map((value) => Math.max(0, Math.min(100, value)));
+  const total = clamped.reduce((sum, value) => sum + value, 0);
+
+  if (total <= 0) {
+    throw new Error("Groq response failed validation: suggestions total percent must be greater than zero.");
+  }
+
+  const normalized = clamped.map((value) => (value / total) * 100);
+  const rounded = normalized.map((value) => Number(value.toFixed(2)));
+  const roundedTotal = rounded.reduce((sum, value) => sum + value, 0);
+  const delta = Number((100 - roundedTotal).toFixed(2));
+
+  if (Math.abs(delta) > 0) {
+    let targetIndex = 0;
+    for (let i = 1; i < rounded.length; i += 1) {
+      if (rounded[i] > rounded[targetIndex]) {
+        targetIndex = i;
+      }
+    }
+
+    rounded[targetIndex] = Number(Math.max(0, rounded[targetIndex] + delta).toFixed(2));
+  }
+
+  return rounded;
+}
+
+export async function generateBudgetSuggestions(
+  request: AiBudgetSuggestionsRequest,
+  recentSpendingData: CategorySpendSummary[],
+): Promise<AiBudgetSuggestionsResponse> {
+  if (!env.GROQ_API_KEY) {
+    throw new Error("GROQ_API_KEY not configured");
+  }
+
+  const client = new Groq({ apiKey: env.GROQ_API_KEY });
+  const modelCandidates = [env.GROQ_MODEL_PRIMARY, env.GROQ_MODEL_FALLBACK_1, env.GROQ_MODEL_FALLBACK_2];
+  const uniqueModelCandidates = Array.from(new Set(modelCandidates));
+
+  const targetCategories = request.categories.map((item) => item.category.trim());
+  const trimmedSpendingData = trimSpendingData(recentSpendingData);
+  const monthLabel = new Date(request.year, request.month - 1).toLocaleDateString("en-US", {
+    month: "long",
+    year: "numeric",
+  });
+
+  const draftBreakdown = request.categories
+    .map(
+      (item) =>
+        `- ${item.category}: current=${item.percent.toFixed(2)}% ($${item.allocated.toFixed(2)})`,
+    )
+    .join("\n");
+
+  const recentSpendingBreakdown = trimmedSpendingData.length
+    ? trimmedSpendingData
+        .map(
+          (item) =>
+            `- ${item.category}: spent=$${item.spent.toFixed(2)}, budgeted=$${item.allocated.toFixed(2)}`,
+        )
+        .join("\n")
+    : "- No recent spending history available";
+
+  const tokenBudget = calculateBudgetSuggestionsTokenBudget(targetCategories.length);
+
+  const messages = [
+    {
+      role: "system",
+      content: "You are a precise personal finance assistant. Return compact JSON only.",
+    },
+    {
+      role: "user",
+      content: `Create suggested budget percentages for ${monthLabel}. Income is $${request.income.toFixed(2)}.\n\nTarget categories (must be exact labels):\n${targetCategories.map((category) => `- ${category}`).join("\n")}\n\nCurrent draft allocation:\n${draftBreakdown}\n\nRecent spending history:\n${recentSpendingBreakdown}\n\nReturn JSON only with this shape: {"suggestions":[{"category":"...","percent":number}],"generatedAt":"ISO"}. Include exactly one suggestion for each target category. Percent values should be non-negative and practical for a student budget.`,
+    },
+  ] as const;
+
+  let sawAvailabilityFailure = false;
+  let lastError: unknown = null;
+
+  for (const modelName of uniqueModelCandidates) {
+    const candidateModes: OutputMode[] = ["json-object", "no-format"];
+
+    for (const outputMode of candidateModes) {
+      try {
+        const completionConfig: Record<string, unknown> = {
+          model: modelName,
+          messages: messages as any,
+          temperature: 0,
+          max_tokens: tokenBudget,
+        };
+
+        if (outputMode !== "no-format") {
+          completionConfig.response_format = buildBudgetSuggestionsResponseFormat(outputMode) as any;
+        }
+
+        const completion = await client.chat.completions.create(completionConfig as any);
+        const responseText = parseMessageContent(completion.choices[0]?.message?.content).trim();
+        let jsonText = responseText;
+        const jsonMatch = jsonText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+        if (jsonMatch) {
+          jsonText = jsonMatch[1].trim();
+        }
+
+        const parsed = JSON.parse(jsonText);
+        const strictParsed = aiBudgetSuggestionsResponseSchema.safeParse({
+          ...parsed,
+          generatedAt:
+            parsed && typeof parsed === "object" && "generatedAt" in parsed
+              ? (parsed as { generatedAt?: unknown }).generatedAt
+              : undefined,
+        });
+
+        const extractedItems = strictParsed.success
+          ? strictParsed.data.suggestions
+          : extractSuggestionItems(parsed);
+
+        if (extractedItems.length === 0) {
+          throw new Error("Groq response failed validation: no suggestion items could be parsed.");
+        }
+
+        const generatedAt =
+          strictParsed.success && strictParsed.data.generatedAt
+            ? strictParsed.data.generatedAt
+            : new Date().toISOString();
+
+        const byCategory = new Map<string, number>();
+        const byCategoryLoose = new Map<string, number>();
+        for (const item of extractedItems) {
+          const key = normalizeCategory(item.category);
+          if (!byCategory.has(key)) {
+            byCategory.set(key, item.percent);
+          }
+
+          const looseKey = normalizeCategoryLoose(item.category);
+          if (!byCategoryLoose.has(looseKey)) {
+            byCategoryLoose.set(looseKey, item.percent);
+          }
+        }
+
+        const rawPercents = targetCategories.map((category) => {
+          const normalized = normalizeCategory(category);
+          const loose = normalizeCategoryLoose(category);
+          const value = byCategory.get(normalized) ?? byCategoryLoose.get(loose);
+
+          if (typeof value !== "number" || Number.isNaN(value)) {
+            return Number(
+              request.categories.find((item) => normalizeCategory(item.category) === normalized)?.percent ?? 0,
+            );
+          }
+          return value;
+        });
+
+        const hasAnyAiValue = rawPercents.some((value, index) => {
+          const normalized = normalizeCategory(targetCategories[index]);
+          const loose = normalizeCategoryLoose(targetCategories[index]);
+          return byCategory.has(normalized) || byCategoryLoose.has(loose);
+        });
+
+        if (!hasAnyAiValue) {
+          throw new Error("Groq response failed validation: no usable category percentages returned.");
+        }
+
+        const normalizedPercents = normalizeSuggestionPercents(rawPercents);
+        const suggestions = targetCategories.map((category, index) => ({
+          category,
+          percent: normalizedPercents[index],
+        }));
+
+        return {
+          suggestions,
+          generatedAt,
+        };
+      } catch (error) {
+        lastError = error;
+        const message = error instanceof Error ? error.message : String(error);
+
+        if (isModelAvailabilityError(message)) {
+          sawAvailabilityFailure = true;
+          break;
+        }
+
+        if (isStructuredOutputCompatibilityError(message) && outputMode !== "json-object") {
+          continue;
+        }
+
+        if (isJsonGenerationValidationError(message)) {
+          continue;
+        }
+
+        if (error instanceof SyntaxError) {
+          lastError = new Error(`Groq returned invalid JSON: ${error.message}`);
+          continue;
+        }
+
+        if (error instanceof z.ZodError) {
+          const validationErrors = error.errors
+            .map((e) => `${e.path.join(".")}: ${e.message} (code: ${e.code})`)
+            .join("; ");
+          lastError = new Error(`Groq response failed validation: ${validationErrors}`);
+          continue;
+        }
+
+        if (message.toLowerCase().includes("failed validation")) {
+          continue;
+        }
+
+        throw error;
+      }
+    }
+  }
+
+  if (sawAvailabilityFailure) {
+    throw new Error(
+      "No supported Groq model is available for chat completions. Configure GROQ_MODEL_PRIMARY / GROQ_MODEL_FALLBACK_* to valid model IDs.",
+    );
+  }
+
+  if (lastError instanceof Error) {
+    throw lastError;
+  }
+
+  throw new Error("Groq request failed before any model could return a response.");
 }
 
 /**

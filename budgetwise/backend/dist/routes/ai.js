@@ -1,7 +1,8 @@
 import { Router } from "express";
 import { prisma } from "../lib/prisma.js";
 import { authRequired } from "../middleware/authRequired.js";
-import { generateDashboardInsights, generateBudgetComparison, } from "../services/aiInsights.js";
+import { generateDashboardInsights, generateBudgetComparison, generateBudgetSuggestions, } from "../services/aiInsights.js";
+import { aiBudgetSuggestionsRequestSchema } from "../validators/budgetSchemas.js";
 /**
  * ===== AI Insights Router =====
  * Handles AI-powered budget recommendation generation.
@@ -116,19 +117,19 @@ aiRouter.get("/dashboard-insights", authRequired, async (req, res) => {
                         type: "reduce",
                         category: "General",
                         title: "Avoid impulse spending this week",
-                        message: "Action: Skip one non-essential purchase this week. | Why: No current spending history is available yet, so building discipline now creates a strong baseline. | Impact: Better control and faster savings growth. | When: Review purchases at the end of this week.",
+                        message: "- Action: Skip one non-essential purchase this week.\n- Why: No current spending history is available yet, so building discipline now creates a strong baseline.\n- Impact: Better control and faster savings growth.\n- When: Review purchases at the end of this week.",
                     },
                     {
                         type: "keepDoing",
                         category: "General",
                         title: "Keep tracking every transaction",
-                        message: "Action: Log each expense and income entry as it happens. | Why: Consistent tracking improves recommendation quality and reveals hidden spending patterns. | Impact: More accurate AI guidance and clearer monthly progress. | When: Continue daily for the next 2 weeks.",
+                        message: "- Action: Log each expense and income entry as it happens.\n- Why: Consistent tracking improves recommendation quality and reveals hidden spending patterns.\n- Impact: More accurate AI guidance and clearer monthly progress.\n- When: Continue daily for the next 2 weeks.",
                     },
                     {
                         type: "spendMore",
                         category: "Savings",
                         title: "Fund savings before discretionary spend",
-                        message: "Action: Set aside a small fixed amount before optional purchases. | Why: Prioritizing savings early helps prevent end-of-month shortfalls and builds resilience. | Impact: Stronger emergency cushion and reduced money stress. | When: Start with your next paycheck.",
+                        message: "- Action: Set aside a small fixed amount before optional purchases.\n- Why: Prioritizing savings early helps prevent end-of-month shortfalls and builds resilience.\n- Impact: Stronger emergency cushion and reduced money stress.\n- When: Start with your next paycheck.",
                     },
                 ],
                 generatedAt: new Date().toISOString(),
@@ -191,6 +192,90 @@ aiRouter.get("/dashboard-insights", authRequired, async (req, res) => {
         console.error("[AI Route] Dashboard insights error:", error);
         return res.status(500).json({
             error: "An error occurred while generating recommendations.",
+        });
+    }
+});
+aiRouter.post("/budget-suggestions", authRequired, async (req, res) => {
+    const userId = req.user.id;
+    const parsedBody = aiBudgetSuggestionsRequestSchema.safeParse(req.body);
+    if (!parsedBody.success) {
+        return res.status(422).json({
+            error: "Invalid request payload for AI budget suggestions.",
+            details: parsedBody.error.flatten(),
+        });
+    }
+    const payload = parsedBody.data;
+    try {
+        const endOfTargetMonth = new Date(payload.year, payload.month, 0, 23, 59, 59, 999);
+        const recentStart = new Date(endOfTargetMonth);
+        recentStart.setMonth(recentStart.getMonth() - 3);
+        recentStart.setDate(1);
+        recentStart.setHours(0, 0, 0, 0);
+        const [expenses, budgets] = await Promise.all([
+            prisma.expense.findMany({
+                where: {
+                    userId,
+                    date: { gte: recentStart, lte: endOfTargetMonth },
+                },
+            }),
+            prisma.budget.findMany({
+                where: {
+                    userId,
+                    month: payload.month,
+                    year: payload.year,
+                },
+            }),
+        ]);
+        const spendByCategory = new Map();
+        const budgetByCategory = new Map();
+        for (const expense of expenses) {
+            if (expense.type !== "EXPENSE")
+                continue;
+            spendByCategory.set(expense.category, (spendByCategory.get(expense.category) ?? 0) + expense.amount);
+        }
+        for (const budget of budgets) {
+            budgetByCategory.set(budget.category, (budgetByCategory.get(budget.category) ?? 0) + budget.allocated);
+        }
+        const allCategories = new Set([...spendByCategory.keys(), ...budgetByCategory.keys()]);
+        const spendingSummary = Array.from(allCategories).map((category) => ({
+            category,
+            spent: spendByCategory.get(category) ?? 0,
+            allocated: budgetByCategory.get(category) ?? 0,
+        }));
+        const suggestions = await generateBudgetSuggestions(payload, spendingSummary);
+        return res.json(suggestions);
+    }
+    catch (aiError) {
+        if (aiError instanceof Error && aiError.message.includes("GROQ_API_KEY not configured")) {
+            return res.status(503).json({
+                error: "AI insights are not available. Please contact support.",
+            });
+        }
+        const aiMessage = aiError instanceof Error ? aiError.message : String(aiError);
+        console.error("[AI Route] Budget suggestions AI error:", aiMessage);
+        if (aiMessage.includes("No supported Groq model is available") ||
+            (aiMessage.toLowerCase().includes("model") &&
+                (aiMessage.toLowerCase().includes("not found") ||
+                    aiMessage.toLowerCase().includes("unavailable") ||
+                    aiMessage.toLowerCase().includes("not supported") ||
+                    aiMessage.toLowerCase().includes("does not have access") ||
+                    aiMessage.toLowerCase().includes("permission denied") ||
+                    aiMessage.toLowerCase().includes("not allowed") ||
+                    aiMessage.toLowerCase().includes("rate limit") ||
+                    aiMessage.includes("404") ||
+                    aiMessage.includes("429")))) {
+            return res.status(502).json({
+                error: "AI provider model is unavailable. Please try again later or update model configuration.",
+            });
+        }
+        if (aiMessage.toLowerCase().includes("failed validation") ||
+            aiMessage.toLowerCase().includes("invalid json")) {
+            return res.status(422).json({
+                error: "Failed to generate valid AI suggestions. Please try again.",
+            });
+        }
+        return res.status(502).json({
+            error: "AI service is temporarily unavailable. Please try again later.",
         });
     }
 });

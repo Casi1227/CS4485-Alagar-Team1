@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Sparkles, DollarSign, TrendingUp, Lightbulb, ChevronRight, Check } from 'lucide-react';
 import { apiJson } from '../lib/api';
 import { STANDARD_EXPENSE_CATEGORIES, type StandardExpenseCategory } from '../lib/expenseCategories';
@@ -105,6 +105,7 @@ function balanceCategories(income: number, cats: BudgetCategory[]): BudgetCatego
 }
 
 const DECIMAL_RE = /^\d*\.?\d*$/;
+const AI_REQUEST_TIMEOUT_MS = 30000;
 
 export function BudgetCreator() {
   const [totalIncome, setTotalIncome] = useState('1200');
@@ -128,6 +129,12 @@ export function BudgetCreator() {
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [applyingAi, setApplyingAi] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+
+  const isMountedRef = useRef(true);
+  const applyRequestIdRef = useRef(0);
+  const latestIncomeRef = useRef(0);
 
   // Same month/year as the dashboard default (real-world calendar month) so saved budgets
   // match what the dashboard reads for total budget and per-category bars.
@@ -144,6 +151,16 @@ export function BudgetCreator() {
     const n = parseFloat(totalIncome);
     return Number.isFinite(n) ? Math.max(0, n) : 0;
   }, [totalIncome]);
+
+  useEffect(() => {
+    latestIncomeRef.current = income;
+  }, [income]);
+
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   const syncInputsFromCategories = (cats: BudgetCategory[]) => {
     setAmountInputs(cats.map((c) => String(c.amount)));
@@ -208,6 +225,7 @@ export function BudgetCreator() {
   const handleIncomeChange = (value: string) => {
     if (!DECIMAL_RE.test(value)) return;
     setTotalIncome(value);
+    setAiError(null);
 
     const parsed = parseFloat(value);
     if (!Number.isFinite(parsed)) {
@@ -230,6 +248,7 @@ export function BudgetCreator() {
 
   const handleCategoryAmountChange = (index: number, value: string) => {
     if (!DECIMAL_RE.test(value)) return;
+    setAiError(null);
 
     const nextAmountInputs = [...amountInputs];
     nextAmountInputs[index] = value;
@@ -255,6 +274,7 @@ export function BudgetCreator() {
 
   const handleCategoryPercentChange = (index: number, value: string) => {
     if (!DECIMAL_RE.test(value)) return;
+    setAiError(null);
 
     const nextPercentInputs = [...percentInputs];
     nextPercentInputs[index] = value;
@@ -298,12 +318,81 @@ export function BudgetCreator() {
     setPercentInputs(next);
   };
 
-  // Keep button + UI, just applies suggested percents
-  const applyAISuggestions = () => {
-    const newCats = balanceCategories(income, buildFromSuggested(income));
-    setBudgetCategories(newCats);
-    syncInputsFromCategories(newCats);
-    setStep(2);
+  const applyAISuggestions = async () => {
+    if (income <= 0 || applyingAi) return;
+
+    const startedIncome = income;
+    const requestId = applyRequestIdRef.current + 1;
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), AI_REQUEST_TIMEOUT_MS);
+    let raceTimeoutId: number | null = null;
+    applyRequestIdRef.current = requestId;
+    setApplyingAi(true);
+    setAiError(null);
+
+    try {
+      const response = await Promise.race([
+        fetchAiBudgetSuggestions(
+          {
+            income: startedIncome,
+            month,
+            year,
+            categories: budgetCategories.map((c) => ({
+              category: c.name,
+              allocated: round2(c.amount),
+              percent: round2(c.percent),
+            })),
+          },
+          { signal: controller.signal },
+        ),
+        new Promise<never>((_, reject) => {
+          raceTimeoutId = window.setTimeout(() => {
+            reject(new Error('AI request timed out. Please try again.'));
+          }, AI_REQUEST_TIMEOUT_MS);
+        }),
+      ]);
+
+      // Only skip if this is an old/stale request (requestId doesn't match)
+      if (applyRequestIdRef.current !== requestId) {
+        return;
+      }
+
+      if (Math.abs(latestIncomeRef.current - startedIncome) > 0.009) {
+        setAiError('Income changed while AI suggestions were generated. Please try again.');
+        return;
+      }
+
+      const byCategory = new Map(response.suggestions.map((item) => [item.category.trim().toLowerCase(), item.percent]));
+
+      const newCats = budgetCategories.map((cat) => {
+        const normalized = cat.name.trim().toLowerCase();
+        const pct = clamp(byCategory.get(normalized) ?? cat.percent, 0, 100);
+        return {
+          ...cat,
+          percent: round2(pct),
+          amount: round2((startedIncome * pct) / 100),
+        };
+      });
+
+      const balanced = balanceCategories(startedIncome, newCats);
+      setBudgetCategories(balanced);
+      syncInputsFromCategories(balanced);
+      setStep(2);
+    } catch (error: unknown) {
+      const message =
+        error instanceof DOMException && error.name === 'AbortError'
+          ? 'AI request timed out. Please try again.'
+          : error instanceof Error
+            ? error.message
+            : 'Failed to apply AI suggestions.';
+      setAiError(message);
+    } finally {
+      window.clearTimeout(timeoutId);
+      if (raceTimeoutId !== null) {
+        window.clearTimeout(raceTimeoutId);
+      }
+      setApplyingAi(false);
+    }
   };
 
   const totalAllocated = budgetCategories.reduce((sum, cat) => sum + cat.amount, 0);
@@ -419,11 +508,18 @@ export function BudgetCreator() {
               {income > 0 && (
                 <button
                   onClick={applyAISuggestions}
-                  className="mt-4 w-full flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-lg hover:from-purple-600 hover:to-indigo-700 transition-colors"
+                  disabled={applyingAi}
+                  className="mt-4 w-full flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-lg hover:from-purple-600 hover:to-indigo-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   <Sparkles className="w-5 h-5" />
-                  <span>Apply AI Suggestions</span>
+                  <span>{applyingAi ? 'Applying AI Suggestions...' : 'Apply AI Suggestions'}</span>
                 </button>
+              )}
+
+              {aiError && (
+                <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                  {aiError}
+                </div>
               )}
             </div>
 
