@@ -91,8 +91,8 @@ dashboardRouter.get("/", authRequired, async (req: AuthedRequest, res) => {
     year = now.getFullYear();
   }
 
-  const startOfMonth = new Date(year, month - 1, 1);
-  const endOfMonth = new Date(year, month, 0, 23, 59, 59, 999);
+  const startOfMonth = new Date(Number(year), Number(month) - 1, 1);
+  const endOfMonth = new Date(Number(year), Number(month), 0, 23, 59, 59, 999);
 
   const [budgets, expenses] = await Promise.all([
     prisma.budget.findMany({

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Sparkles, DollarSign, TrendingUp, Lightbulb, ChevronRight, Check } from 'lucide-react';
-import { apiJson } from '../lib/api';
+import { apiJson, fetchAiBudgetSuggestions } from '../lib/api';
 import { STANDARD_EXPENSE_CATEGORIES, type StandardExpenseCategory } from '../lib/expenseCategories';
 
 /** Suggested % splits (sum ≈ 100) for the 9 canonical categories. */

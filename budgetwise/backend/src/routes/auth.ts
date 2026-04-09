@@ -164,11 +164,13 @@ authRouter.post("/reset-password", async (req, res) => {
 	if (
 		!resetPasswordRequest
 		|| !await bcrypt.compare(key, resetPasswordRequest.keyHash)
-		|| now - resetPasswordRequest.createdAt
+		|| Number(now) - Number(resetPasswordRequest.createdAt)
 			> RESET_PASSWORD_REQUEST_MAX_LIFESPAN_MS
 	) {
-		console.log(resetPasswordRequest);
-		console.log(now - resetPasswordRequest.createdAt);
+		//console.log(resetPasswordRequest);
+		//console.log(
+                //    Number(now) - Number(resetPasswordRequest.createdAt)
+                //);
 
 		return res
 			.status(404)
