@@ -26,6 +26,65 @@ export type AiBudgetSuggestionsResponse = {
   generatedAt: string;
 };
 
+export type PlaidLinkTokenResponse = {
+  linkToken: string;
+  expiration: string;
+};
+
+export type PlaidExchangeResponse = {
+  linkedAccount: {
+    id: string;
+    institutionName?: string | null;
+    accountName?: string | null;
+    accountMask?: string | null;
+    accountType?: string | null;
+    accountSubtype?: string | null;
+    createdAt: string;
+  };
+  importSummary: {
+    created: number;
+    updated: number;
+    removed: number;
+    skipped: number;
+  };
+};
+
+export type LinkedPlaidAccount = {
+  id: string;
+  institutionName?: string | null;
+  accountName?: string | null;
+  accountMask?: string | null;
+  accountType?: string | null;
+  accountSubtype?: string | null;
+  lastSyncedAt?: string | null;
+  createdAt: string;
+};
+
+export async function createPlaidLinkToken(): Promise<PlaidLinkTokenResponse> {
+  return apiJson('/api/plaid/link-token', {
+    method: 'POST',
+    body: JSON.stringify({ accountType: 'credit' }),
+  });
+}
+
+export async function exchangePlaidPublicToken(publicToken: string): Promise<PlaidExchangeResponse> {
+  return apiJson('/api/plaid/exchange-public-token', {
+    method: 'POST',
+    body: JSON.stringify({ publicToken }),
+  });
+}
+
+export async function listPlaidLinkedAccounts(): Promise<{ linkedAccounts: LinkedPlaidAccount[] }> {
+  return apiJson('/api/plaid/accounts', { method: 'GET' });
+}
+
+export async function syncPlaidLinkedAccount(linkedAccountId: string): Promise<{ summary: { created: number; updated: number; removed: number; skipped: number } }> {
+  return apiJson('/api/plaid/sync', {
+    method: 'POST',
+    body: JSON.stringify({ linkedAccountId }),
+  });
+}
+
 export async function apiJson(path: string, init: RequestInit = {}) {
   const url = `${baseUrl}${path.startsWith('/') ? path : `/${path}`}`;
 

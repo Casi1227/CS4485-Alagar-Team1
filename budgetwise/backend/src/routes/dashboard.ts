@@ -1,39 +1,13 @@
 import { Router } from "express";
 import { prisma } from "../lib/prisma.js";
 import { authRequired, type AuthedRequest } from "../middleware/authRequired.js";
+import { BUDGET_CATEGORIES, CATEGORY_COLORS } from "../lib/categories.js";
 
 /**
  * Dashboard summary: spend totals, category breakdown, budget progress for a given month.
  * GET /api/dashboard?month=3&year=2026 (month/year optional; default = current)
  */
 export const dashboardRouter = Router();
-
-// Categories shown in Budget Creator / charts.
-// Keep this in sync with frontend `BudgetCreator.tsx` categoryOptions.
-const BUDGET_CATEGORIES = [
-  "Rent",
-  "Groceries",
-  "Tuition",
-  "Transportation",
-  "Entertainment",
-  "Utilities",
-  "Health",
-  "Dining",
-  "Other",
-];
-
-const CATEGORY_COLORS: Record<string, string> = {
-  // Canonical expense categories
-  Rent: "#6366F1",
-  Tuition: "#A855F7",
-  Groceries: "#16A34A",
-  Transportation: "#4ECDC4",
-  Entertainment: "#F97316",
-  Utilities: "#D97706",
-  Health: "#0891B2",
-  Dining: "#DC2626",
-  Other: "#95A5A6",
-};
 
 function normalizeCategory(category: string): string {
   return category.trim().toLowerCase();

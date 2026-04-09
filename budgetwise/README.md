@@ -68,3 +68,20 @@ npx prisma migrate dev --name init
 Notes
 * Do not commit backend/.env, frontend/.env.local, backend/dev.db, or node_modules
 * Keep Groq API keys server side only
+
+Plaid Sandbox (Credit Card Linking)
+* BudgetWise now supports Sandbox-only Plaid linking through Add Account -> Credit Card.
+* In backend/.env set:
+
+PLAID_CLIENT_ID="PLAID-SANDBOX-KEY"
+PLAID_SECRET="PLAID-SANDBOX-KEY"
+PLAID_ENV="sandbox"
+PLAID_PRODUCTS="transactions"
+PLAID_COUNTRY_CODES="US"
+PLAID_LANGUAGE="en"
+
+* Replace PLAID-SANDBOX-KEY values with your real Plaid Sandbox keys from the Plaid Dashboard.
+* Test credentials for manual Link flow:
+	* Username: user_good
+	* Password: pass_good
+* After linking, BudgetWise imports the last 30 days of transactions and maps them to app categories.

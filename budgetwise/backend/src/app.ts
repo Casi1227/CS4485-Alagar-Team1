@@ -12,6 +12,7 @@ import { budgetsRouter } from "./routes/budgets.js";
 import { dashboardRouter } from "./routes/dashboard.js";
 import { aiRouter } from "./routes/ai.js";
 import { settingsRouter } from "./routes/settings.js";
+import { plaidRouter } from "./routes/plaid.js";
 
 export function createApp() {
   const app = express();
@@ -30,6 +31,7 @@ export function createApp() {
   // Mount AI insights router for Groq-powered recommendations
   app.use("/api/ai", aiRouter);
   app.use("/api/settings", settingsRouter);
+  app.use("/api/plaid", plaidRouter);
 
   app.use((_req, res) => res.status(404).json({ error: "Not found" }));
   return app;

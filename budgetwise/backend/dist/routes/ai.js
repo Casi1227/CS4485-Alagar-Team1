@@ -252,7 +252,6 @@ aiRouter.post("/budget-suggestions", authRequired, async (req, res) => {
             });
         }
         const aiMessage = aiError instanceof Error ? aiError.message : String(aiError);
-        console.error("[AI Route] Budget suggestions AI error:", aiMessage);
         if (aiMessage.includes("No supported Groq model is available") ||
             (aiMessage.toLowerCase().includes("model") &&
                 (aiMessage.toLowerCase().includes("not found") ||

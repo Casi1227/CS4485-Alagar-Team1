@@ -1,24 +1,70 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { CreditCard, Landmark, Settings, LogOut, User, ChevronDown, Menu, X, LayoutDashboard, Receipt, Sparkles, CalendarDays } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { usePlaidLink } from 'react-plaid-link';
+import { createPlaidLinkToken, exchangePlaidPublicToken } from '../lib/api';
 
 export function Header() {
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isAddAccountMenuOpen, setIsAddAccountMenuOpen] = useState(false);
   const [isNavMenuOpen, setIsNavMenuOpen] = useState(false);
+  const [plaidToken, setPlaidToken] = useState<string | null>(null);
+  const [isPreparingPlaid, setIsPreparingPlaid] = useState(false);
+  const [shouldOpenPlaid, setShouldOpenPlaid] = useState(false);
   const { logout, user } = useAuth();
   const displayName = user?.name || 'Student';
   const displayEmail = user?.email || '';
 
-  const handleAddCreditCard = () => {
-    alert('Opening add credit card dialog...');
+  const { open: openPlaid, ready: plaidReady } = usePlaidLink({
+    token: plaidToken,
+    onSuccess: async (publicToken) => {
+      try {
+        const result = await exchangePlaidPublicToken(publicToken);
+        const summary = result.importSummary;
+        alert(
+          `Plaid account linked. Imported ${summary.created} new, ${summary.updated} updated, ${summary.removed} removed, ${summary.skipped} skipped transactions.`,
+        );
+        window.dispatchEvent(new Event('bw:plaid-sync'));
+        window.location.reload();
+      } catch (error: any) {
+        alert(error?.message || 'Failed to import transactions from Plaid.');
+      } finally {
+        setPlaidToken(null);
+        setShouldOpenPlaid(false);
+      }
+    },
+    onExit: () => {
+      setShouldOpenPlaid(false);
+      setPlaidToken(null);
+    },
+  });
+
+  useEffect(() => {
+    if (plaidReady && shouldOpenPlaid) {
+      openPlaid();
+    }
+  }, [openPlaid, plaidReady, shouldOpenPlaid]);
+
+  const handleAddCreditCard = async () => {
     setIsAddAccountMenuOpen(false);
+    setIsMobileMenuOpen(false);
+
+    try {
+      setIsPreparingPlaid(true);
+      const data = await createPlaidLinkToken();
+      setPlaidToken(data.linkToken);
+      setShouldOpenPlaid(true);
+    } catch (error: any) {
+      alert(error?.message || 'Failed to initialize Plaid Sandbox link.');
+    } finally {
+      setIsPreparingPlaid(false);
+    }
   };
 
   const handleAddBankAccount = () => {
-    alert('Opening add bank account dialog...');
+    alert('Bank account linking is coming soon. Use Credit Card for Plaid Sandbox testing.');
     setIsAddAccountMenuOpen(false);
   };
 
@@ -121,9 +167,10 @@ export function Header() {
               <button
                 onClick={() => setIsAddAccountMenuOpen(!isAddAccountMenuOpen)}
                 className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+                disabled={isPreparingPlaid}
               >
                 <CreditCard className="w-4 h-4" />
-                <span>Add Account</span>
+                <span>{isPreparingPlaid ? 'Preparing Plaid...' : 'Add Account'}</span>
                 <ChevronDown className={`w-4 h-4 transition-transform ${isAddAccountMenuOpen ? 'rotate-180' : ''}`} />
               </button>
 
