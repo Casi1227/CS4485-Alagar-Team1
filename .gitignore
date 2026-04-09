@@ -1,5 +1,5 @@
 # Backend database.
-/budgetwise/backend/**/dev*.db
+*.db
 /budgetwise/backend/prisma/migrations/*/
 
 # env files.
@@ -17,10 +17,11 @@
 .*.sw*
 
 # Next.js.
-.next/
+build/
 out/
-.vercel/
+.next/
 .turbo/
+.vercel/
 
 # Node.js.
 node_modules/
@@ -32,3 +33,10 @@ pnpm-debug.log*
 # macOS.
 .DS_Store
 __MACOSX
+Thumbs.db
+
+# Build output
+dist/
+
+# Docker
+docker-compose.override.yml
