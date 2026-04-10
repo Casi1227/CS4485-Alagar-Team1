@@ -138,6 +138,11 @@ Start services:
 
 docker compose up --build
 
+Import mock data (docker version):
+
+In second terminal: docker compose --profile tools run --rm mock-seed
+Username + password for the mock data account will be given in terminal
+
 Run in background:
 
 docker compose up -d
