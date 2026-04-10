@@ -27,7 +27,7 @@ services:
       DATABASE_URL: postgresql://myapp:secret@db:5432/myapp_db
       JWT_SECRET: budgetwise_dev_secret_9f3a2c1d7e6b5a4c8d1f0e9b2a7c6d5e
       PORT: 5001
-      CORS_ORIGIN: http://localhost:3000
+      CORS_ORIGIN: http://localhost:10000
       OPENAI_API_KEY: ""
     ports:
       - "5001:5001"
@@ -41,7 +41,7 @@ services:
     environment:
       NEXT_PUBLIC_API_BASE_URL: http://localhost:5001
     ports:
-      - "3000:3000"
+      - "10000:10000"
 
 volumes:
   postgres_data:
