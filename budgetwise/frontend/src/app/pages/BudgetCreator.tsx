@@ -61,6 +61,18 @@ type BudgetGetResponse = {
   categories: Array<{ category: string; allocated: number; percent: number }>;
 };
 
+type AiProposalItem = {
+  category: string;
+  percent: number;
+  amount: number;
+};
+type ExpenseTx = {
+  amount: number;
+  category: string;
+  type: 'EXPENSE' | 'INCOME';
+  date: string;
+};
+
 function round2(n: number) {
   return Math.round(n * 100) / 100;
 }
@@ -129,8 +141,14 @@ export function BudgetCreator() {
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [calculatingAi, setCalculatingAi] = useState(false);
   const [applyingAi, setApplyingAi] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
+  const [aiNotice, setAiNotice] = useState<string | null>(null);
+  const [aiProposal, setAiProposal] = useState<AiProposalItem[] | null>(null);
+  const [aiProposalGeneratedAt, setAiProposalGeneratedAt] = useState<string | null>(null);
+  const [aiReasons, setAiReasons] = useState<Record<string, string>>({});
+  const [expenseHistory, setExpenseHistory] = useState<ExpenseTx[]>([]);
 
   const isMountedRef = useRef(true);
   const applyRequestIdRef = useRef(0);
@@ -166,6 +184,22 @@ export function BudgetCreator() {
     setAmountInputs(cats.map((c) => String(c.amount)));
     setPercentInputs(cats.map((c) => String(round2(c.percent))));
   };
+
+  useEffect(() => {
+    let cancelled = false;
+    apiJson('/api/expenses')
+      .then((data: { expenses?: ExpenseTx[] }) => {
+        if (cancelled) return;
+        const rows = (data?.expenses ?? []).filter((t) => t.type === 'EXPENSE');
+        setExpenseHistory(rows);
+      })
+      .catch(() => {
+        if (!cancelled) setExpenseHistory([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Load from backend if budget exists
   useEffect(() => {
@@ -226,6 +260,9 @@ export function BudgetCreator() {
     if (!DECIMAL_RE.test(value)) return;
     setTotalIncome(value);
     setAiError(null);
+    setAiNotice(null);
+    setAiProposal(null);
+    setAiProposalGeneratedAt(null);
 
     const parsed = parseFloat(value);
     if (!Number.isFinite(parsed)) {
@@ -249,6 +286,9 @@ export function BudgetCreator() {
   const handleCategoryAmountChange = (index: number, value: string) => {
     if (!DECIMAL_RE.test(value)) return;
     setAiError(null);
+    setAiNotice(null);
+    setAiProposal(null);
+    setAiProposalGeneratedAt(null);
 
     const nextAmountInputs = [...amountInputs];
     nextAmountInputs[index] = value;
@@ -275,6 +315,9 @@ export function BudgetCreator() {
   const handleCategoryPercentChange = (index: number, value: string) => {
     if (!DECIMAL_RE.test(value)) return;
     setAiError(null);
+    setAiNotice(null);
+    setAiProposal(null);
+    setAiProposalGeneratedAt(null);
 
     const nextPercentInputs = [...percentInputs];
     nextPercentInputs[index] = value;
@@ -318,8 +361,8 @@ export function BudgetCreator() {
     setPercentInputs(next);
   };
 
-  const applyAISuggestions = async () => {
-    if (income <= 0 || applyingAi) return;
+  const calculateAISuggestions = async () => {
+    if (income <= 0 || calculatingAi) return;
 
     const startedIncome = income;
     const requestId = applyRequestIdRef.current + 1;
@@ -327,10 +370,56 @@ export function BudgetCreator() {
     const timeoutId = window.setTimeout(() => controller.abort(), AI_REQUEST_TIMEOUT_MS);
     let raceTimeoutId: number | null = null;
     applyRequestIdRef.current = requestId;
-    setApplyingAi(true);
+    setCalculatingAi(true);
     setAiError(null);
+    setAiNotice(null);
+    setAiProposal(null);
+    setAiProposalGeneratedAt(null);
 
     try {
+      // Build 3-month window (current + prior 2 months) for trend analysis.
+      const monthKeys: string[] = [];
+      for (let i = 0; i < 3; i += 1) {
+        const d = new Date(year, month - 1 - i, 1);
+        monthKeys.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+      }
+      const byCategoryByMonth = new Map<string, Map<string, number>>();
+      let monthsWithAnyDataCount = 0;
+      const totalsByMonth = new Map<string, number>();
+      for (const t of expenseHistory) {
+        const d = new Date(t.date);
+        if (Number.isNaN(d.getTime())) continue;
+        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        if (!monthKeys.includes(key)) continue;
+        const cat = t.category.trim();
+        if (!byCategoryByMonth.has(cat)) byCategoryByMonth.set(cat, new Map<string, number>());
+        const monthMap = byCategoryByMonth.get(cat)!;
+        monthMap.set(key, (monthMap.get(key) ?? 0) + t.amount);
+        totalsByMonth.set(key, (totalsByMonth.get(key) ?? 0) + t.amount);
+      }
+      monthsWithAnyDataCount = monthKeys.filter((k) => (totalsByMonth.get(k) ?? 0) > 0).length;
+
+      if (monthsWithAnyDataCount === 0) {
+        const defaults = balanceCategories(startedIncome, buildFromSuggested(startedIncome)).map((x) => ({
+          category: x.name,
+          percent: round2(x.percent),
+          amount: round2(x.amount),
+        }));
+        const reasons: Record<string, string> = {};
+        for (const d of defaults) {
+          reasons[d.category] = 'Default allocation used due to lack of transaction data.';
+        }
+        setAiReasons(reasons);
+        setAiProposal(defaults);
+        setAiProposalGeneratedAt(new Date().toISOString());
+        setAiNotice('No transaction data found. Default budget allocation values were used.');
+        return;
+      }
+
+      if (monthsWithAnyDataCount === 1) {
+        setAiNotice('Suggestions are based on only the current month of data, so allocations may be skewed.');
+      }
+
       const response = await Promise.race([
         fetchAiBudgetSuggestions(
           {
@@ -364,20 +453,121 @@ export function BudgetCreator() {
 
       const byCategory = new Map(response.suggestions.map((item) => [item.category.trim().toLowerCase(), item.percent]));
 
-      const newCats = budgetCategories.map((cat) => {
+      const rawProposal = budgetCategories.map((cat) => {
         const normalized = cat.name.trim().toLowerCase();
         const pct = clamp(byCategory.get(normalized) ?? cat.percent, 0, 100);
         return {
-          ...cat,
+          category: cat.name,
           percent: round2(pct),
           amount: round2((startedIncome * pct) / 100),
         };
       });
 
-      const balanced = balanceCategories(startedIncome, newCats);
-      setBudgetCategories(balanced);
-      syncInputsFromCategories(balanced);
-      setStep(2);
+      const avgByCategory = new Map<string, number>();
+      const latestByCategory = new Map<string, number>();
+      const sampleCountByCategory = new Map<string, number>();
+      const variabilityByCategory = new Map<string, number>();
+      for (const cat of STANDARD_EXPENSE_CATEGORIES) {
+        const monthMap = byCategoryByMonth.get(cat) ?? new Map<string, number>();
+        const raw = monthKeys.map((k) => monthMap.get(k) ?? 0);
+        const samples = raw.filter((x) => x > 0);
+        const avg = samples.length > 0 ? samples.reduce((a, b) => a + b, 0) / samples.length : 0;
+        avgByCategory.set(cat, avg);
+        latestByCategory.set(cat, monthMap.get(monthKeys[0]) ?? 0);
+        sampleCountByCategory.set(cat, samples.length);
+        if (samples.length <= 1 || avg <= 0) {
+          variabilityByCategory.set(cat, 0);
+        } else {
+          const variance = samples.reduce((acc, v) => acc + Math.pow(v - avg, 2), 0) / samples.length;
+          const stdDev = Math.sqrt(variance);
+          variabilityByCategory.set(cat, stdDev / avg); // coefficient of variation
+        }
+      }
+
+      const working = rawProposal.map((item) => ({ ...item }));
+      const reasons: Record<string, string> = {};
+
+      // Rent: static/required category should be at least its stable trend level.
+      const rentIndex = working.findIndex((x) => x.category === 'Rent');
+      if (rentIndex >= 0) {
+        const rentFloor = Math.max(avgByCategory.get('Rent') ?? 0, latestByCategory.get('Rent') ?? 0);
+        if (rentFloor > 0 && working[rentIndex].amount < rentFloor) {
+          working[rentIndex].amount = round2(rentFloor);
+          reasons.Rent = `Rent is consistently static; set to at least your recent monthly trend ($${round2(rentFloor).toFixed(2)}).`;
+        } else {
+          reasons.Rent = 'Rent appears stable, so allocation stays near your historical monthly amount.';
+        }
+      }
+
+      for (const cat of STANDARD_EXPENSE_CATEGORIES) {
+        if (cat === 'Rent') continue;
+        const idx = working.findIndex((x) => x.category === cat);
+        if (idx < 0) continue;
+        const avg = avgByCategory.get(cat) ?? 0;
+        const samples = sampleCountByCategory.get(cat) ?? 0;
+        const variability = variabilityByCategory.get(cat) ?? 0;
+
+        if (avg <= 0 || samples === 0) {
+          reasons[cat] = 'Limited recent data for this category, so AI baseline is used.';
+          continue;
+        }
+
+        // Average-first approach: use 1-3 month average as the anchor, then adjust.
+        let target = avg;
+        if (variability > 0.45) {
+          // Highly inconsistent spending: avoid over-trimming and keep around average.
+          target = avg;
+          reasons[cat] = `Spending swings across months, so this is kept around your ${samples}-month average ($${round2(avg).toFixed(2)}).`;
+        } else {
+          const trimPct = cat === 'Dining' || cat === 'Other' ? 0.1 : 0.03;
+          target = avg * (1 - trimPct);
+          reasons[cat] = `Spending is fairly consistent; using your ${samples}-month average with a small ${Math.round(trimPct * 100)}% trim to encourage savings.`;
+        }
+
+        const blended = working[idx].amount * 0.25 + target * 0.75;
+        working[idx].amount = round2(blended);
+      }
+
+      const totalFloor = working.reduce((sum, x) => sum + x.amount, 0);
+      if (totalFloor > startedIncome) {
+        // If required floors exceed income, scale non-rent first; then clamp to income.
+        const rent = working.find((x) => x.category === 'Rent');
+        const rentAmount = rent?.amount ?? 0;
+        const nonRent = working.filter((x) => x.category !== 'Rent');
+        const nonRentTotal = nonRent.reduce((s, x) => s + x.amount, 0);
+        const remaining = Math.max(0, startedIncome - rentAmount);
+        if (nonRentTotal > 0) {
+          for (const x of nonRent) x.amount = round2((x.amount / nonRentTotal) * remaining);
+        }
+      } else {
+        // Normalize to full income while preserving relative category intent.
+        const scaled = balanceCategories(
+          startedIncome,
+          working.map((x, i) => ({
+            ...budgetCategories[i],
+            amount: x.amount,
+            percent: startedIncome > 0 ? (x.amount / startedIncome) * 100 : 0,
+          })),
+        );
+        for (let i = 0; i < working.length; i += 1) working[i].amount = round2(scaled[i].amount);
+      }
+
+      const proposal = working.map((p) => ({
+        ...p,
+        percent: startedIncome > 0 ? round2((p.amount / startedIncome) * 100) : 0,
+      }));
+
+      const sumPct = proposal.reduce((s, p) => s + p.percent, 0);
+      if (Math.abs(sumPct - 100) > 0.01 && proposal.length > 0) {
+        const delta = round2(100 - sumPct);
+        const last = proposal.length - 1;
+        proposal[last] = { ...proposal[last], percent: round2(Math.max(0, proposal[last].percent + delta)) };
+        proposal[last] = { ...proposal[last], amount: round2((startedIncome * proposal[last].percent) / 100) };
+      }
+
+      setAiReasons(reasons);
+      setAiProposal(proposal);
+      setAiProposalGeneratedAt(response.generatedAt);
     } catch (error: unknown) {
       const message =
         error instanceof DOMException && error.name === 'AbortError'
@@ -391,6 +581,32 @@ export function BudgetCreator() {
       if (raceTimeoutId !== null) {
         window.clearTimeout(raceTimeoutId);
       }
+      setCalculatingAi(false);
+    }
+  };
+
+  const applyAISuggestions = () => {
+    if (!aiProposal || applyingAi || income <= 0) return;
+    setApplyingAi(true);
+    setAiError(null);
+    try {
+      const byCategory = new Map(aiProposal.map((item) => [item.category.toLowerCase(), item.percent]));
+      const newCats = budgetCategories.map((cat) => {
+        const pct = clamp(byCategory.get(cat.name.toLowerCase()) ?? cat.percent, 0, 100);
+        return {
+          ...cat,
+          percent: round2(pct),
+          amount: round2((income * pct) / 100),
+        };
+      });
+      const balanced = balanceCategories(income, newCats);
+      setBudgetCategories(balanced);
+      syncInputsFromCategories(balanced);
+      setStep(2);
+      setAiProposal(null);
+      setAiProposalGeneratedAt(null);
+      setAiNotice(null);
+    } finally {
       setApplyingAi(false);
     }
   };
@@ -492,6 +708,36 @@ export function BudgetCreator() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-6">
             <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-100">
+              <h3 className="font-semibold text-gray-900 mb-3">AI Suggested Allocation</h3>
+              {!aiProposal ? (
+                <p className="text-sm text-gray-600">
+                  Run <strong>AI Budget Calculator</strong> to preview percentages based on the current month and the prior 1-2 months of transaction trends.
+                </p>
+              ) : (
+                <>
+                  <div className="space-y-3 max-h-72 overflow-auto pr-1">
+                    {aiProposal.map((item) => (
+                      <div key={item.category} className="rounded-lg border border-gray-100 p-3">
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="font-medium text-gray-800">{item.category}</span>
+                          <span className="font-semibold text-gray-900">
+                            {item.percent.toFixed(2)}% (${item.amount.toFixed(2)})
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-600 mt-1">
+                          {aiReasons[item.category] || 'Calculated from AI + transaction trend.'}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-xs text-gray-500 mt-3">
+                    Generated {aiProposalGeneratedAt ? new Date(aiProposalGeneratedAt).toLocaleString() : 'just now'}.
+                  </p>
+                </>
+              )}
+            </div>
+
+            <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-100">
               <h2 className="text-xl font-semibold text-gray-900 mb-4">Monthly Income</h2>
               <div className="relative">
                 <DollarSign className="absolute left-4 top-1/2 transform -translate-y-1/2 w-6 h-6 text-gray-400" />
@@ -506,19 +752,35 @@ export function BudgetCreator() {
               </div>
 
               {income > 0 && (
-                <button
-                  onClick={applyAISuggestions}
-                  disabled={applyingAi}
-                  className="mt-4 w-full flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-lg hover:from-purple-600 hover:to-indigo-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-                >
-                  <Sparkles className="w-5 h-5" />
-                  <span>{applyingAi ? 'Applying AI Suggestions...' : 'Apply AI Suggestions'}</span>
-                </button>
+                <div className="mt-4 space-y-2">
+                  <button
+                    onClick={calculateAISuggestions}
+                    disabled={calculatingAi}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-lg hover:from-purple-600 hover:to-indigo-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    <Sparkles className="w-5 h-5" />
+                    <span>{calculatingAi ? 'Calculating with AI...' : 'AI Budget Calculator'}</span>
+                  </button>
+
+                  <button
+                    onClick={applyAISuggestions}
+                    disabled={!aiProposal || applyingAi}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-gray-900 text-white rounded-lg hover:bg-black transition-colors disabled:bg-gray-300 disabled:text-gray-500 disabled:cursor-not-allowed"
+                  >
+                    <Sparkles className="w-5 h-5" />
+                    <span>{applyingAi ? 'Applying...' : 'Apply AI Suggestions'}</span>
+                  </button>
+                </div>
               )}
 
               {aiError && (
                 <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
                   {aiError}
+                </div>
+              )}
+              {aiNotice && (
+                <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                  {aiNotice}
                 </div>
               )}
             </div>

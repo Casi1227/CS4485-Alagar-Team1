@@ -37,6 +37,23 @@ Stop services:
 
 docker compose down
 
+### Import Mock Data with Docker
+
+1) Copy your spreadsheet into:
+
+backend/mock-data/personal_transactions_budgetwise_2025_2026.xlsx
+
+2) Start DB + app:
+
+docker compose up --build
+
+3) In a second terminal (repo root), run the one-off seed:
+
+docker compose --profile tools run --rm mock-seed
+
+This imports data for the mock user into the Docker Postgres database.
+It is optional and does not change normal teammate startup.
+
 ---
 
 # Local Development (Without Docker)
@@ -120,6 +137,11 @@ npx prisma migrate reset
 Start services:
 
 docker compose up --build
+
+Import mock data (docker version):
+
+In second terminal: docker compose --profile tools run --rm mock-seed
+Username + password for the mock data account will be given in terminal
 
 Run in background:
 

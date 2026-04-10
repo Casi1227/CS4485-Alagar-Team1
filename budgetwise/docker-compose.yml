@@ -29,8 +29,29 @@ services:
       PORT: 5001
       CORS_ORIGIN: http://localhost:10000
       OPENAI_API_KEY: ""
+      MOCK_DATA_XLSX: /app/mock-data/personal_transactions_budgetwise_2025_2026.xlsx
     ports:
       - "5001:5001"
+    volumes:
+      - ./backend/mock-data:/app/mock-data:ro
+
+  mock-seed:
+    build:
+      context: ./backend
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://myapp:secret@db:5432/myapp_db
+      JWT_SECRET: budgetwise_dev_secret_9f3a2c1d7e6b5a4c8d1f0e9b2a7c6d5e
+      CORS_ORIGIN: http://localhost:3000
+      MOCK_DATA_XLSX: /app/mock-data/personal_transactions_budgetwise_2025_2026.xlsx
+      MOCK_DATA_WIPE: "true"
+    volumes:
+      - ./backend/mock-data:/app/mock-data:ro
+    command: npm run mock:data
+    restart: "no"
+    profiles: ["tools"]
 
   frontend:
     build:

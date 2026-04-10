@@ -8,7 +8,7 @@ export function Header() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isAddAccountMenuOpen, setIsAddAccountMenuOpen] = useState(false);
   const [isNavMenuOpen, setIsNavMenuOpen] = useState(false);
-  const { logout, user } = useAuth();
+  const { logout, user, avatarColor } = useAuth();
   const displayName = user?.name || 'Student';
   const displayEmail = user?.email || '';
 
@@ -92,8 +92,8 @@ export function Header() {
                     >
                       <Receipt className="w-5 h-5 text-green-600" />
                       <div className="text-left">
-                        <div className="font-medium text-gray-900">Expenses</div>
-                        <div className="text-xs text-gray-500">Track all expenses</div>
+                        <div className="font-medium text-gray-900">Transactions</div>
+                        <div className="text-xs text-gray-500">Track all transactions</div>
                       </div>
                     </Link>
 
@@ -165,7 +165,10 @@ export function Header() {
                 onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
                 className="flex items-center gap-2 px-4 py-2 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
               >
-                <div className="w-8 h-8 bg-gradient-to-br from-purple-400 to-indigo-500 rounded-full flex items-center justify-center">
+                <div
+                  className="w-8 h-8 rounded-full flex items-center justify-center"
+                  style={{ backgroundColor: avatarColor }}
+                >
                   <User className="w-5 h-5 text-white" />
                 </div>
                 <span className="font-medium text-gray-900">{displayName}</span>
@@ -226,7 +229,10 @@ export function Header() {
               {/* User Info */}
               <div className="px-4 py-3 bg-gray-50 rounded-lg">
                 <div className="flex items-center gap-3 mb-3">
-                  <div className="w-10 h-10 bg-gradient-to-br from-purple-400 to-indigo-500 rounded-full flex items-center justify-center">
+                  <div
+                    className="w-10 h-10 rounded-full flex items-center justify-center"
+                    style={{ backgroundColor: avatarColor }}
+                  >
                     <User className="w-6 h-6 text-white" />
                   </div>
                   <div>
@@ -270,8 +276,8 @@ export function Header() {
   >
     <Receipt className="w-5 h-5 text-green-600" />
     <div className="text-left">
-      <div className="font-medium text-gray-900">Expenses</div>
-      <div className="text-xs text-gray-500">Track all expenses</div>
+      <div className="font-medium text-gray-900">Transactions</div>
+      <div className="text-xs text-gray-500">Track all transactions</div>
     </div>
   </Link>
 
