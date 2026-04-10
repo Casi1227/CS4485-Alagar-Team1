@@ -106,6 +106,49 @@ dashboardRouter.get("/", authRequired, async (req: AuthedRequest, res) => {
     }),
   ]);
 
+  let recentTransactionsSourceMonth = Number(month);
+  let recentTransactionsSourceYear = Number(year);
+  let recentPool = expenses;
+
+  // If there are no transactions in the time-synced current month,
+  // fallback to the latest previous month that has data.
+  if (recentPool.length === 0) {
+    const latestPrevious = await prisma.expense.findFirst({
+      where: {
+        userId,
+        date: { lt: startOfMonth },
+      },
+      orderBy: { date: "desc" },
+      select: { date: true },
+    });
+
+    if (latestPrevious?.date) {
+      recentTransactionsSourceMonth = latestPrevious.date.getMonth() + 1;
+      recentTransactionsSourceYear = latestPrevious.date.getFullYear();
+      const sourceStart = new Date(recentTransactionsSourceYear, recentTransactionsSourceMonth - 1, 1);
+      const sourceEnd = new Date(recentTransactionsSourceYear, recentTransactionsSourceMonth, 0, 23, 59, 59, 999);
+      recentPool = await prisma.expense.findMany({
+        where: {
+          userId,
+          date: { gte: sourceStart, lte: sourceEnd },
+        },
+        orderBy: { date: "desc" },
+      });
+    }
+  }
+
+  const recentTransactions = recentPool
+    .sort((a, b) => b.date.getTime() - a.date.getTime())
+    .slice(0, 10)
+    .map((t) => ({
+      id: t.id,
+      date: t.date,
+      category: t.category,
+      note: t.note ?? "",
+      type: t.type,
+      amount: Math.round(t.amount * 100) / 100,
+    }));
+
   // BudgetCreator stores the total monthly budget in `totalLimit` (duplicated per category row).
   // Use the max to be resilient if a partial save occurred.
   const totalBudget = budgets.reduce((max, b) => (b.totalLimit > max ? b.totalLimit : max), 0);
@@ -174,5 +217,8 @@ dashboardRouter.get("/", authRequired, async (req: AuthedRequest, res) => {
     remaining: Math.round(remaining * 100) / 100,
     categoryBreakdown,
     remainingByCategory,
+    recentTransactionsMonth: recentTransactionsSourceMonth,
+    recentTransactionsYear: recentTransactionsSourceYear,
+    recentTransactions,
   });
 });

@@ -5,11 +5,16 @@ import { useRouter } from 'next/navigation';
 import { apiJson } from '../lib/api';
 
 type AuthUser = { id: string; email: string; name: string };
+type ThemeMode = 'light' | 'dark';
 
 interface AuthContextType {
   isAuthenticated: boolean;
   token: string | null;
   user: AuthUser | null;
+  themeMode: ThemeMode;
+  setThemeMode: (mode: ThemeMode) => void;
+  avatarColor: string;
+  setAvatarColor: (color: string) => void;
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, name: string) => Promise<void>;
   logout: () => void;
@@ -19,10 +24,14 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const THEME_STORAGE_KEY = 'bw_theme_mode';
+  const AVATAR_COLOR_STORAGE_KEY = 'bw_avatar_color';
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
   const [token, setToken] = useState<string | null>(null);
   const [user, setUser] = useState<AuthUser | null>(null);
+  const [themeMode, setThemeModeState] = useState<ThemeMode>('light');
+  const [avatarColor, setAvatarColorState] = useState('#6366F1');
   const router = useRouter();
 
   const clearExpensesPageMonthState = () => {
@@ -89,6 +98,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const storedTheme = window.localStorage.getItem(THEME_STORAGE_KEY);
+    if (storedTheme === 'dark' || storedTheme === 'light') {
+      setThemeModeState(storedTheme);
+    }
+
+    const storedAvatarColor = window.localStorage.getItem(AVATAR_COLOR_STORAGE_KEY);
+    if (storedAvatarColor) {
+      setAvatarColorState(storedAvatarColor);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const root = document.documentElement;
+    root.setAttribute('data-theme', themeMode);
+  }, [themeMode]);
+
+  const setThemeMode = (mode: ThemeMode) => {
+    setThemeModeState(mode);
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(THEME_STORAGE_KEY, mode);
+    }
+  };
+
+  const setAvatarColor = (color: string) => {
+    setAvatarColorState(color);
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(AVATAR_COLOR_STORAGE_KEY, color);
+    }
+  };
+
   const login = async (email: string, password: string) => {
     // Fresh login should reset expenses page month back to current real-world month.
     clearExpensesPageMonthState();
@@ -144,7 +186,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   if (!isInitialized) return null;
 
   return (
-    <AuthContext.Provider value={{ isAuthenticated, token, user, login, register, logout, refreshUser }}>
+    <AuthContext.Provider
+      value={{
+        isAuthenticated,
+        token,
+        user,
+        themeMode,
+        setThemeMode,
+        avatarColor,
+        setAvatarColor,
+        login,
+        register,
+        logout,
+        refreshUser,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

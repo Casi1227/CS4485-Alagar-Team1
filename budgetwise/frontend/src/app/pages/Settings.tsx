@@ -3,8 +3,10 @@ import { User, X } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { apiJson } from '../lib/api';
 
+const AVATAR_COLORS = ['#6366F1', '#7C3AED', '#DB2777', '#DC2626', '#D97706', '#16A34A', '#0891B2', '#334155'];
+
 export function Settings() {
-  const { user, refreshUser, logout } = useAuth();
+  const { user, refreshUser, logout, themeMode, setThemeMode, avatarColor, setAvatarColor } = useAuth();
 
   const [name, setName] = useState(user?.name || '');
   const [email, setEmail] = useState(user?.email || '');
@@ -88,7 +90,10 @@ export function Settings() {
         <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-100">
 
           <div className="flex items-center gap-4 mb-6">
-            <div className="w-14 h-14 bg-gradient-to-br from-purple-400 to-indigo-500 rounded-full flex items-center justify-center">
+            <div
+              className="w-14 h-14 rounded-full flex items-center justify-center"
+              style={{ backgroundColor: avatarColor }}
+            >
               <User className="w-8 h-8 text-white" />
             </div>
 
@@ -153,6 +158,62 @@ export function Settings() {
 
           </form>
 
+        </div>
+
+        <div className="mt-8 bg-white rounded-xl shadow-lg p-6 border border-gray-100">
+          <h2 className="text-lg font-semibold text-gray-900 mb-1">Appearance</h2>
+          <p className="text-sm text-gray-600 mb-4">
+            Choose your app theme and avatar color.
+          </p>
+
+          <div className="mb-5">
+            <p className="text-sm font-medium text-gray-700 mb-2">Theme</p>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setThemeMode('light')}
+                className={`rounded-lg px-4 py-2 text-sm font-medium border transition-colors ${
+                  themeMode === 'light'
+                    ? 'bg-indigo-600 text-white border-indigo-600'
+                    : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                }`}
+              >
+                Light
+              </button>
+              <button
+                type="button"
+                onClick={() => setThemeMode('dark')}
+                className={`rounded-lg px-4 py-2 text-sm font-medium border transition-colors ${
+                  themeMode === 'dark'
+                    ? 'bg-indigo-600 text-white border-indigo-600'
+                    : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                }`}
+              >
+                Dark
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <p className="text-sm font-medium text-gray-700 mb-2">Avatar color</p>
+            <div className="flex flex-wrap gap-3">
+              {AVATAR_COLORS.map((color) => {
+                const selected = avatarColor.toLowerCase() === color.toLowerCase();
+                return (
+                  <button
+                    key={color}
+                    type="button"
+                    onClick={() => setAvatarColor(color)}
+                    className={`h-9 w-9 rounded-full border-2 transition-transform ${
+                      selected ? 'border-indigo-600 scale-105' : 'border-gray-200'
+                    }`}
+                    style={{ backgroundColor: color }}
+                    aria-label={`Set avatar color ${color}`}
+                  />
+                );
+              })}
+            </div>
+          </div>
         </div>
 
         <div className="mt-8 bg-white rounded-xl shadow-lg p-6 border border-red-100">
