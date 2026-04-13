@@ -1,3 +1,4 @@
+import os from 'node:os';
 import { z } from "zod";
 
 const envSchema = z.object({
