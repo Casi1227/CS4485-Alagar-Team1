@@ -3,6 +3,7 @@ import { z } from "zod";
 const envSchema = z.object({
   PORT: z.coerce.number().default(5001),
   CORS_ORIGIN: z.string().default("http://localhost:3000"),
+  FRONTEND_HOSTNAME: z.string().default('localhost'),
   /* Mail server configuration. */
   MAIL_SERVER_NAME: z.string().default("localhost"),
   /* 465 is the standard port for email message submission over TLS. */

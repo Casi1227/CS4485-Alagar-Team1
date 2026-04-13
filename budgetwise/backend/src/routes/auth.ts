@@ -61,55 +61,56 @@ authRouter.post("/login", async (req, res) => {
 });
 
 authRouter.post("/forgot-password", async (req, res) => {
-	const parsed = forgotPasswordSchema.safeParse(req.body);
-	if (!parsed.success) {
-		return res.status(400).json({ error: parsed.error.flatten() });
-	}
+    const parsed = forgotPasswordSchema.safeParse(req.body);
+    if (!parsed.success) {
+        return res.status(400).json({ error: parsed.error.flatten() });
+    }
 
-	const { email } = parsed.data;
+    const { email } = parsed.data;
 
-	const user = await prisma.user.findUnique({where: { email }});
-	if (!user) {
-		return res.status(404).json({ error: "User not found" });
-	}
+    const user = await prisma.user.findUnique({where: { email }});
+    if (!user) {
+        return res.status(404).json({ error: "User not found" });
+    }
 
-	const key = cryptoRandomString({
-		length: RESET_PASSWORD_REQUEST_KEY_LENGTH,
-		type: "url-safe",
-	});
-	const keyHash = await bcrypt.hash(key, PASSWORD_HASH_SALT);
+    const key = cryptoRandomString({
+        length: RESET_PASSWORD_REQUEST_KEY_LENGTH,
+        type: "url-safe",
+    });
+    const keyHash = await bcrypt.hash(key, PASSWORD_HASH_SALT);
 
-	await prisma.resetPasswordRequest.upsert({
-		where: { userId: user.id },
-		update: { keyHash, createdAt: new Date() },
-		create: { userId: user.id, keyHash },
-	});
+    await prisma.resetPasswordRequest.upsert({
+        where: { userId: user.id },
+        update: { keyHash, createdAt: new Date() },
+        create: { userId: user.id, keyHash },
+    });
 
-	const mailTransport = nodemailer.createTransport({
-		host: env.MAIL_SERVER_NAME,
-		port: env.MAIL_SERVER_PORT,
-		secure: env.MAIL_SERVER_SECURE,
-		auth: {
-			user: env.MAIL_SERVER_USER,
-			pass: env.MAIL_SERVER_PASSWORD,
-		},
-	});
+    const mailTransport = nodemailer.createTransport({
+        host: env.MAIL_SERVER_NAME,
+        port: env.MAIL_SERVER_PORT,
+        secure: env.MAIL_SERVER_SECURE,
+        auth: {
+            user: env.MAIL_SERVER_USER,
+            pass: env.MAIL_SERVER_PASSWORD,
+        },
+    });
 
-	let resetPasswordUrl = new URL("/reset-password", env.CORS_ORIGIN);
-	resetPasswordUrl.searchParams.set("email", user.email);
-	resetPasswordUrl.searchParams.set("key", key);
+    let resetPasswordUrl = new URL("/reset-password", env.CORS_ORIGIN);
+    resetPasswordUrl.hostname = env.FRONTEND_HOSTNAME;
+    resetPasswordUrl.searchParams.set("email", user.email);
+    resetPasswordUrl.searchParams.set("key", key);
 
-	const resetPasswordEmailMessage = {
-		from: {
-			name: env.RESET_PASSWORD_SENDER_NAME,
-			address: env.RESET_PASSWORD_SENDER_ADDRESS,
-		},
-		to: {
-			name: user.name,
-			address: user.email,
-		},
-		subject: "Reset Your Account Password",
-		text: `\
+    const resetPasswordEmailMessage = {
+        from: {
+            name: env.RESET_PASSWORD_SENDER_NAME,
+            address: env.RESET_PASSWORD_SENDER_ADDRESS,
+        },
+        to: {
+            name: user.name,
+            address: user.email,
+        },
+        subject: "Reset Your Account Password",
+        text: `\
 Hello, ${user.name}.
 
 Please user the following link to reset your password. \
@@ -121,74 +122,74 @@ ${resetPasswordUrl.href}
 Thank you,
 Budgetwise\
 `,
-	};
-	//console.log(
-	//	`Reset-password email message: ${
-	//		JSON.stringify(resetPasswordEmailMessage, null, '\t')
-	//	}`,
-	//);
+    };
+    //console.log(
+    //    `Reset-password email message: ${
+    //        JSON.stringify(resetPasswordEmailMessage, null, '\t')
+    //    }`,
+    //);
 
-	try {
-		await mailTransport.sendMail(resetPasswordEmailMessage);
-	} catch (err) {
-		return res.status(500).json({ error: err });
-	}
+    try {
+        await mailTransport.sendMail(resetPasswordEmailMessage);
+    } catch (err) {
+        return res.status(500).json({ error: err });
+    }
 
-	return res.json({ ok: true });
+    return res.json({ ok: true });
 });
 
 authRouter.post("/reset-password", async (req, res) => {
-	const parsed = resetPasswordSchema.safeParse(req.body);
-	if (!parsed.success) {
-		return res.status(400).json({ error: parsed.error.flatten() });
-	}
+    const parsed = resetPasswordSchema.safeParse(req.body);
+    if (!parsed.success) {
+        return res.status(400).json({ error: parsed.error.flatten() });
+    }
 
-	const { email, key, password } = parsed.data;
-	console.log(email);
-	console.log(key);
-	console.log(password);
+    const { email, key, password } = parsed.data;
+    console.log(email);
+    console.log(key);
+    console.log(password);
 
-	const existingUser = await prisma.user.findUnique({
-		where: { email },
-	});
-	if (!existingUser) {
-		return res.status(404).json({ error: "User not found" });
-	}
-	const userId = existingUser.id;
+    const existingUser = await prisma.user.findUnique({
+        where: { email },
+    });
+    if (!existingUser) {
+        return res.status(404).json({ error: "User not found" });
+    }
+    const userId = existingUser.id;
 
-	const now = new Date();
-	const resetPasswordRequest =
-		await prisma.resetPasswordRequest.findUnique({
-			where: { userId },
-		});
-	if (
-		!resetPasswordRequest
-		|| !await bcrypt.compare(key, resetPasswordRequest.keyHash)
-		|| Number(now) - Number(resetPasswordRequest.createdAt)
-			> RESET_PASSWORD_REQUEST_MAX_LIFESPAN_MS
-	) {
-		//console.log(resetPasswordRequest);
-		//console.log(
-                //    Number(now) - Number(resetPasswordRequest.createdAt)
-                //);
+    const now = new Date();
+    const resetPasswordRequest =
+        await prisma.resetPasswordRequest.findUnique({
+            where: { userId },
+        });
+    if (
+        !resetPasswordRequest
+        || !await bcrypt.compare(key, resetPasswordRequest.keyHash)
+        || Number(now) - Number(resetPasswordRequest.createdAt)
+            > RESET_PASSWORD_REQUEST_MAX_LIFESPAN_MS
+    ) {
+        //console.log(resetPasswordRequest);
+        //console.log(
+        //    Number(now) - Number(resetPasswordRequest.createdAt)
+        //);
 
-		return res
-			.status(404)
-			.json({ error: "Reset-password link expired" });
-	}
+        return res
+            .status(404)
+            .json({ error: "Reset-password link expired" });
+    }
 
-	await prisma.resetPasswordRequest.delete({
-		where: { userId },
-	});
+    await prisma.resetPasswordRequest.delete({
+        where: { userId },
+    });
 
-	const passwordHash = await bcrypt.hash(password, PASSWORD_HASH_SALT);
+    const passwordHash = await bcrypt.hash(password, PASSWORD_HASH_SALT);
 
-	await prisma.user.update({
-		where: { id: userId },
-		data: { passwordHash },
-	});
+    await prisma.user.update({
+        where: { id: userId },
+        data: { passwordHash },
+    });
 
-	return res.json({ ok: true });
+    return res.json({ ok: true });
 });
 
 /**
