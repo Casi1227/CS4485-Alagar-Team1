@@ -6,6 +6,7 @@ import { prisma } from "../lib/prisma.js";
 import { signAccessToken } from "../lib/jwt.js";
 import { loginSchema, registerSchema, forgotPasswordSchema, resetPasswordSchema, RESET_PASSWORD_REQUEST_KEY_LENGTH } from "../validators/authSchemas.js";
 import { authRequired, PASSWORD_HASH_SALT } from "../middleware/authRequired.js";
+import { env } from "../config/env.js";
 export const authRouter = Router();
 /* 30 minutes. */
 const RESET_PASSWORD_REQUEST_MAX_LIFESPAN_MS = 1_800_000;
@@ -54,9 +55,7 @@ authRouter.post("/forgot-password", async (req, res) => {
         return res.status(400).json({ error: parsed.error.flatten() });
     }
     const { email } = parsed.data;
-    const user = await prisma.user.findUnique({
-        where: { email },
-    });
+    const user = await prisma.user.findUnique({ where: { email } });
     if (!user) {
         return res.status(404).json({ error: "User not found" });
     }
@@ -68,37 +67,29 @@ authRouter.post("/forgot-password", async (req, res) => {
     await prisma.resetPasswordRequest.upsert({
         where: { userId: user.id },
         update: { keyHash, createdAt: new Date() },
-        create: { keyHash },
+        create: { userId: user.id, keyHash },
     });
-    const MESSAGE_SUBMISSION_TLS_PORT = 465;
-    const MESSAGE_SUBMISSION_PORT = 587;
-    const mailServerName = process.env.MAIL_SERVER_NAME ?? "localhost";
-    let mailServerPort = process.env.MAIL_SERVER_PORT;
-    let mailServerSecure = process.env.MAIL_SERVER_SECURE;
-    if (mailServerPort == null || mailServerPort == "") {
-        if (mailServerSecure == null || mailServerSecure == "") {
-            mailServerSecure = true;
-        }
-        mailServerPort = mailServerSecure
-            ? MESSAGE_SUBMISSION_TLS_PORT
-            : MESSAGE_SUBMISSION_PORT;
-    }
-    else if (mailServerSecure == null || mailServerSecure == "") {
-        mailServerSecure = mailServerPort == MESSAGE_SUBMISSION_TLS_PORT;
-    }
     const mailTransport = nodemailer.createTransport({
-        host: mailServerName,
-        port: mailServerPort,
-        secure: mailServerSecure,
+        host: env.MAIL_SERVER_NAME,
+        port: env.MAIL_SERVER_PORT,
+        secure: env.MAIL_SERVER_SECURE,
+        auth: {
+            user: env.MAIL_SERVER_USER,
+            pass: env.MAIL_SERVER_PASSWORD,
+        },
     });
-    let resetPasswordUrl = new URL("/reset-password", `${req.protocol}://${req.host}`);
+    let resetPasswordUrl = new URL("/reset-password", env.CORS_ORIGIN);
     resetPasswordUrl.searchParams.set("email", user.email);
     resetPasswordUrl.searchParams.set("key", key);
-    return mailTransport.sendMail({
-        from: `\
-Budgetwise <${process.env.MAIL_SERVER_RESET_PASSWORD_SENDER}>\
-`,
-        to: `${user.name} <${user.email}>`,
+    const resetPasswordEmailMessage = {
+        from: {
+            name: env.RESET_PASSWORD_SENDER_NAME,
+            address: env.RESET_PASSWORD_SENDER_ADDRESS,
+        },
+        to: {
+            name: user.name,
+            address: user.email,
+        },
         subject: "Reset Your Account Password",
         text: `\
 Hello, ${user.name}.
@@ -112,13 +103,19 @@ ${resetPasswordUrl.href}
 Thank you,
 Budgetwise\
 `,
-    }, (err, info) => {
-        console.log(`Reset-password email: ${info}`);
-        if (err) {
-            return res.status(500).json({ error: err });
-        }
-        return res.json({ ok: true });
-    });
+    };
+    //console.log(
+    //	`Reset-password email message: ${
+    //		JSON.stringify(resetPasswordEmailMessage, null, '\t')
+    //	}`,
+    //);
+    try {
+        await mailTransport.sendMail(resetPasswordEmailMessage);
+    }
+    catch (err) {
+        return res.status(500).json({ error: err });
+    }
+    return res.json({ ok: true });
 });
 authRouter.post("/reset-password", async (req, res) => {
     const parsed = resetPasswordSchema.safeParse(req.body);
@@ -126,6 +123,9 @@ authRouter.post("/reset-password", async (req, res) => {
         return res.status(400).json({ error: parsed.error.flatten() });
     }
     const { email, key, password } = parsed.data;
+    console.log(email);
+    console.log(key);
+    console.log(password);
     const existingUser = await prisma.user.findUnique({
         where: { email },
     });
@@ -138,10 +138,13 @@ authRouter.post("/reset-password", async (req, res) => {
         where: { userId },
     });
     if (!resetPasswordRequest
-        || await bcrypt.hash(key, PASSWORD_HASH_SALT)
-            != resetPasswordRequest.keyHash
-        || now - resetPasswordRequest.createdAt
+        || !await bcrypt.compare(key, resetPasswordRequest.keyHash)
+        || Number(now) - Number(resetPasswordRequest.createdAt)
             > RESET_PASSWORD_REQUEST_MAX_LIFESPAN_MS) {
+        //console.log(resetPasswordRequest);
+        //console.log(
+        //    Number(now) - Number(resetPasswordRequest.createdAt)
+        //);
         return res
             .status(404)
             .json({ error: "Reset-password link expired" });
@@ -150,15 +153,11 @@ authRouter.post("/reset-password", async (req, res) => {
         where: { userId },
     });
     const passwordHash = await bcrypt.hash(password, PASSWORD_HASH_SALT);
-    const user = await prisma.user.update({
+    await prisma.user.update({
         where: { id: userId },
         data: { passwordHash },
     });
-    const token = signAccessToken({ sub: user.id, email: user.email });
-    res.json({
-        token,
-        user: { id: user.id, email: user.email, name: user.name },
-    });
+    return res.json({ ok: true });
 });
 /**
  * Contract convenience: /api/auth/me

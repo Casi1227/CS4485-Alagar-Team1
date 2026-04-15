@@ -12,7 +12,7 @@ import { aiBudgetSuggestionsResponseSchema, } from "../validators/budgetSchemas.
  * Used to build the prompt for Groq.
  */
 export const categorySpendSummarySchema = z.object({
-    category: z.string().describe("The spending category (e.g., 'Food & Dining')"),
+    category: z.string().describe("The spending category (e.g., 'Dining', 'Rent')"),
     spent: z.number().nonnegative().describe("Amount spent in this category (dollars)"),
     allocated: z.number().nonnegative().describe("Budget allocated for this category (dollars)"),
 });
@@ -340,6 +340,83 @@ export async function generateDashboardInsights(spendingData, month, year) {
 function normalizeCategory(category) {
     return category.trim().toLowerCase();
 }
+function normalizeCategoryLoose(category) {
+    return normalizeCategory(category).replace(/[^a-z0-9]/g, "");
+}
+function toFiniteNumber(value) {
+    if (typeof value === "number" && Number.isFinite(value)) {
+        return value;
+    }
+    if (typeof value === "string") {
+        const normalized = value.trim().replace(/%/g, "");
+        const parsed = Number(normalized);
+        if (Number.isFinite(parsed)) {
+            return parsed;
+        }
+    }
+    return null;
+}
+function parseSuggestionObject(value) {
+    if (!value || typeof value !== "object") {
+        return null;
+    }
+    const item = value;
+    const categoryRaw = item.category ?? item.name ?? item.label;
+    const percentRaw = item.percent ?? item.percentage ?? item.allocation ?? item.share;
+    if (typeof categoryRaw !== "string") {
+        return null;
+    }
+    const percent = toFiniteNumber(percentRaw);
+    if (percent === null) {
+        return null;
+    }
+    return {
+        category: categoryRaw,
+        percent,
+    };
+}
+function extractSuggestionItems(parsed) {
+    if (!parsed || typeof parsed !== "object") {
+        return [];
+    }
+    const root = parsed;
+    const fromSuggestionsArray = Array.isArray(root.suggestions)
+        ? root.suggestions.map(parseSuggestionObject).filter((item) => item !== null)
+        : [];
+    if (fromSuggestionsArray.length > 0) {
+        return fromSuggestionsArray;
+    }
+    const fromItemsArray = Array.isArray(root.items)
+        ? root.items.map(parseSuggestionObject).filter((item) => item !== null)
+        : [];
+    if (fromItemsArray.length > 0) {
+        return fromItemsArray;
+    }
+    const fromAllocationsObject = root.allocations && typeof root.allocations === "object"
+        ? Object.entries(root.allocations)
+            .map(([category, percentValue]) => {
+            const percent = toFiniteNumber(percentValue);
+            if (percent === null) {
+                return null;
+            }
+            return { category, percent };
+        })
+            .filter((item) => item !== null)
+        : [];
+    if (fromAllocationsObject.length > 0) {
+        return fromAllocationsObject;
+    }
+    const fromRootObject = Object.entries(root)
+        .map(([category, percentValue]) => {
+        const percent = toFiniteNumber(percentValue);
+        if (percent === null) {
+            return null;
+        }
+        return { category, percent };
+    })
+        .filter((item) => item !== null);
+    return fromRootObject;
+}
 function normalizeSuggestionPercents(rawPercents) {
     const clamped = rawPercents.map((value) => Math.max(0, Math.min(100, value)));
     const total = clamped.reduce((sum, value) => sum + value, 0);
@@ -369,7 +446,6 @@ export async function generateBudgetSuggestions(request, recentSpendingData) {
     const modelCandidates = [env.GROQ_MODEL_PRIMARY, env.GROQ_MODEL_FALLBACK_1, env.GROQ_MODEL_FALLBACK_2];
     const uniqueModelCandidates = Array.from(new Set(modelCandidates));
     const targetCategories = request.categories.map((item) => item.category.trim());
-    const targetCategoryKeySet = new Set(targetCategories.map((category) => normalizeCategory(category)));
     const trimmedSpendingData = trimSpendingData(recentSpendingData);
     const monthLabel = new Date(request.year, request.month - 1).toLocaleDateString("en-US", {
         month: "long",
@@ -417,30 +493,50 @@ export async function generateBudgetSuggestions(request, recentSpendingData) {
                     jsonText = jsonMatch[1].trim();
                 }
                 const parsed = JSON.parse(jsonText);
-                const validated = aiBudgetSuggestionsResponseSchema.parse({
+                const strictParsed = aiBudgetSuggestionsResponseSchema.safeParse({
                     ...parsed,
-                    generatedAt: parsed.generatedAt || new Date().toISOString(),
+                    generatedAt: parsed && typeof parsed === "object" && "generatedAt" in parsed
+                        ? parsed.generatedAt
+                        : undefined,
                 });
+                const extractedItems = strictParsed.success
+                    ? strictParsed.data.suggestions
+                    : extractSuggestionItems(parsed);
+                if (extractedItems.length === 0) {
+                    throw new Error("Groq response failed validation: no suggestion items could be parsed.");
+                }
+                const generatedAt = strictParsed.success && strictParsed.data.generatedAt
+                    ? strictParsed.data.generatedAt
+                    : new Date().toISOString();
                 const byCategory = new Map();
-                for (const item of validated.suggestions) {
+                const byCategoryLoose = new Map();
+                for (const item of extractedItems) {
                     const key = normalizeCategory(item.category);
-                    if (!targetCategoryKeySet.has(key)) {
-                        continue;
-                    }
                     if (!byCategory.has(key)) {
                         byCategory.set(key, item.percent);
                     }
-                }
-                if (byCategory.size !== targetCategories.length) {
-                    throw new Error("Groq response failed validation: suggestions missing one or more required categories.");
+                    const looseKey = normalizeCategoryLoose(item.category);
+                    if (!byCategoryLoose.has(looseKey)) {
+                        byCategoryLoose.set(looseKey, item.percent);
+                    }
                 }
                 const rawPercents = targetCategories.map((category) => {
-                    const value = byCategory.get(normalizeCategory(category));
+                    const normalized = normalizeCategory(category);
+                    const loose = normalizeCategoryLoose(category);
+                    const value = byCategory.get(normalized) ?? byCategoryLoose.get(loose);
                     if (typeof value !== "number" || Number.isNaN(value)) {
-                        throw new Error("Groq response failed validation: invalid percentage value.");
+                        return Number(request.categories.find((item) => normalizeCategory(item.category) === normalized)?.percent ?? 0);
                     }
                     return value;
                 });
+                const hasAnyAiValue = rawPercents.some((value, index) => {
+                    const normalized = normalizeCategory(targetCategories[index]);
+                    const loose = normalizeCategoryLoose(targetCategories[index]);
+                    return byCategory.has(normalized) || byCategoryLoose.has(loose);
+                });
+                if (!hasAnyAiValue) {
+                    throw new Error("Groq response failed validation: no usable category percentages returned.");
+                }
                 const normalizedPercents = normalizeSuggestionPercents(rawPercents);
                 const suggestions = targetCategories.map((category, index) => ({
                     category,
@@ -448,7 +544,7 @@ export async function generateBudgetSuggestions(request, recentSpendingData) {
                 }));
                 return {
                     suggestions,
-                    generatedAt: validated.generatedAt,
+                    generatedAt,
                 };
             }
             catch (error) {

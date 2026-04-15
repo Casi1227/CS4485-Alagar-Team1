@@ -46,30 +46,42 @@ budgetsRouter.post("/", authRequired, async (req, res) => {
         return res.status(400).json({ error: parsed.error.flatten() });
     const userId = req.user.id;
     const { month, year, totalLimit, categories } = parsed.data;
-    // Upsert each category row
-    await prisma.$transaction(categories.map((c) => prisma.budget.upsert({
-        where: {
-            user_month_year_category: {
+    const incomingCategoryNames = categories.map((c) => c.category);
+    // Keep only the current submitted categories for that month/year.
+    // This removes stale/legacy category rows that can skew dashboard bars.
+    await prisma.$transaction([
+        prisma.budget.deleteMany({
+            where: {
                 userId,
                 month,
                 year,
-                category: c.category,
+                category: { notIn: incomingCategoryNames },
             },
-        },
-        create: {
-            userId,
-            month,
-            year,
-            totalLimit,
-            category: c.category,
-            allocated: c.allocated,
-            percent: c.percent,
-        },
-        update: {
-            totalLimit,
-            allocated: c.allocated,
-            percent: c.percent,
-        },
-    })));
+        }),
+        ...categories.map((c) => prisma.budget.upsert({
+            where: {
+                user_month_year_category: {
+                    userId,
+                    month,
+                    year,
+                    category: c.category,
+                },
+            },
+            create: {
+                userId,
+                month,
+                year,
+                totalLimit,
+                category: c.category,
+                allocated: c.allocated,
+                percent: c.percent,
+            },
+            update: {
+                totalLimit,
+                allocated: c.allocated,
+                percent: c.percent,
+            },
+        })),
+    ]);
     return res.json({ ok: true });
 });

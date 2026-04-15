@@ -2,6 +2,17 @@ import { z } from "zod";
 const envSchema = z.object({
     PORT: z.coerce.number().default(5001),
     CORS_ORIGIN: z.string().default("http://localhost:3000"),
+    /* Mail server configuration. */
+    MAIL_SERVER_NAME: z.string().default("localhost"),
+    /* 465 is the standard port for email message submission over TLS. */
+    MAIL_SERVER_PORT: z.coerce.number().default(465),
+    MAIL_SERVER_SECURE: z.coerce.boolean().default(true),
+    MAIL_SERVER_USER: z.string().optional(),
+    MAIL_SERVER_PASSWORD: z.string().optional(),
+    /* Sender of reset-password emails. */
+    RESET_PASSWORD_SENDER_NAME: z.string().default("Budgetwise"),
+    RESET_PASSWORD_SENDER_ADDRESS: z.string().email().default("no-reply@localhost"),
+    // JWT_*
     JWT_SECRET: z.string().min(10, "JWT_SECRET must be at least 10 characters").default("dev_secret_change_me"),
     JWT_EXPIRES_IN: z.string().default("7d"),
     // GROQ_API_KEY: Required for AI-powered budget recommendations feature.

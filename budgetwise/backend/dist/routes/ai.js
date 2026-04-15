@@ -39,7 +39,7 @@ export const aiRouter = Router();
  * Response (200):
  *   {
  *     "recommendations": [
- *       { "type": "reduce", "category": "Food & Dining", "title": "Cut dining out", "message": "..." },
+ *       { "type": "reduce", "category": "Dining", "title": "Cut dining out", "message": "..." },
  *       { "type": "keepDoing", "category": "Transportation", "title": "Great transit habits", "message": "..." },
  *       { "type": "spendMore", "category": "Health", "title": "Prioritize wellness", "message": "..." }
  *     ],
@@ -252,7 +252,6 @@ aiRouter.post("/budget-suggestions", authRequired, async (req, res) => {
             });
         }
         const aiMessage = aiError instanceof Error ? aiError.message : String(aiError);
-        console.error("[AI Route] Budget suggestions AI error:", aiMessage);
         if (aiMessage.includes("No supported Groq model is available") ||
             (aiMessage.toLowerCase().includes("model") &&
                 (aiMessage.toLowerCase().includes("not found") ||

@@ -26,3 +26,6 @@ export const updatePasswordSchema = z.object({
     currentPassword: z.string().min(PASSWORD_MIN_LENGTH),
     newPassword: z.string().min(PASSWORD_MIN_LENGTH),
 });
+export const deleteAccountSchema = z.object({
+    password: z.string().min(PASSWORD_MIN_LENGTH),
+});

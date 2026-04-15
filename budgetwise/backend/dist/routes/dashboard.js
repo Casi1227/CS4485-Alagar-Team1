@@ -3,11 +3,10 @@ import { prisma } from "../lib/prisma.js";
 import { authRequired } from "../middleware/authRequired.js";
 /**
  * Dashboard summary: spend totals, category breakdown, budget progress for a given month.
- * GET /api/dashboard?month=3&year=2026 (month/year optional; default = current)
+ * GET /api/dashboard?month=3&year=2026 (month/year optional; default = real-world current month)
  */
 export const dashboardRouter = Router();
-// Categories shown in Budget Creator / charts.
-// Keep this in sync with frontend `BudgetCreator.tsx` categoryOptions.
+// Canonical 9 categories — keep in sync with `frontend/src/app/lib/expenseCategories.ts`.
 const BUDGET_CATEGORIES = [
     "Rent",
     "Groceries",
@@ -19,11 +18,20 @@ const BUDGET_CATEGORIES = [
     "Dining",
     "Other",
 ];
+/** Map old/alt labels from older data into one of BUDGET_CATEGORIES. */
+const LEGACY_CATEGORY_MAP = {
+    "food & dining": "Dining",
+    "books & supplies": "Tuition",
+    "personal care": "Other",
+    "health & fitness": "Health",
+    savings: "Other",
+    housing: "Rent",
+};
 const CATEGORY_COLORS = {
     // Canonical expense categories
     Rent: "#6366F1",
-    Tuition: "#A855F7",
     Groceries: "#16A34A",
+    Tuition: "#A855F7",
     Transportation: "#4ECDC4",
     Entertainment: "#F97316",
     Utilities: "#D97706",
@@ -34,6 +42,14 @@ const CATEGORY_COLORS = {
 function normalizeCategory(category) {
     return category.trim().toLowerCase();
 }
+const CANONICAL_BY_NORMALIZED = new Map(BUDGET_CATEGORIES.map((c) => [normalizeCategory(c), c]));
+function canonicalCategory(raw) {
+    const n = normalizeCategory(raw);
+    const direct = CANONICAL_BY_NORMALIZED.get(n);
+    if (direct)
+        return direct;
+    return LEGACY_CATEGORY_MAP[n] ?? "Other";
+}
 const CATEGORY_COLORS_NORMALIZED = Object.fromEntries(Object.entries(CATEGORY_COLORS).map(([k, v]) => [normalizeCategory(k), v]));
 function getCategoryColor(category, index) {
     const palette = Object.values(CATEGORY_COLORS);
@@ -43,26 +59,20 @@ function getCategoryColor(category, index) {
 dashboardRouter.get("/", authRequired, async (req, res) => {
     const userId = req.user.id;
     const now = new Date();
-    const monthParam = req.query.month ? Number(req.query.month) : undefined;
-    const yearParam = req.query.year ? Number(req.query.year) : undefined;
-    // Time-sync rule: default to the most-recent month that has any transactions.
-    // If user has no transactions, fall back to the real current month.
+    const monthParam = req.query.month !== undefined ? Number(req.query.month) : undefined;
+    const yearParam = req.query.year !== undefined ? Number(req.query.year) : undefined;
     let month = monthParam;
     let year = yearParam;
-    if (!month || !year) {
-        const latest = await prisma.expense.findFirst({
-            where: { userId },
-            orderBy: { date: "desc" },
-            select: { date: true },
-        });
-        const anchor = latest?.date ?? now;
-        if (!month)
-            month = anchor.getMonth() + 1;
-        if (!year)
-            year = anchor.getFullYear();
+    const monthValid = month != null && Number.isFinite(month) && month >= 1 && month <= 12;
+    const yearValid = year != null && Number.isFinite(year) && year >= 1970 && year <= 2100;
+    // Default to the real-world calendar month (not the latest expense date), so mock or
+    // future-dated data does not shift the dashboard away from "today".
+    if (!monthValid || !yearValid) {
+        month = now.getMonth() + 1;
+        year = now.getFullYear();
     }
-    const startOfMonth = new Date(year, month - 1, 1);
-    const endOfMonth = new Date(year, month, 0, 23, 59, 59, 999);
+    const startOfMonth = new Date(Number(year), Number(month) - 1, 1);
+    const endOfMonth = new Date(Number(year), Number(month), 0, 23, 59, 59, 999);
     const [budgets, expenses] = await Promise.all([
         prisma.budget.findMany({
             where: { userId, month, year },
@@ -74,10 +84,52 @@ dashboardRouter.get("/", authRequired, async (req, res) => {
             },
         }),
     ]);
+    let recentTransactionsSourceMonth = Number(month);
+    let recentTransactionsSourceYear = Number(year);
+    let recentPool = expenses;
+    // If there are no transactions in the time-synced current month,
+    // fallback to the latest previous month that has data.
+    if (recentPool.length === 0) {
+        const latestPrevious = await prisma.expense.findFirst({
+            where: {
+                userId,
+                date: { lt: startOfMonth },
+            },
+            orderBy: { date: "desc" },
+            select: { date: true },
+        });
+        if (latestPrevious?.date) {
+            recentTransactionsSourceMonth = latestPrevious.date.getMonth() + 1;
+            recentTransactionsSourceYear = latestPrevious.date.getFullYear();
+            const sourceStart = new Date(recentTransactionsSourceYear, recentTransactionsSourceMonth - 1, 1);
+            const sourceEnd = new Date(recentTransactionsSourceYear, recentTransactionsSourceMonth, 0, 23, 59, 59, 999);
+            recentPool = await prisma.expense.findMany({
+                where: {
+                    userId,
+                    date: { gte: sourceStart, lte: sourceEnd },
+                },
+                orderBy: { date: "desc" },
+            });
+        }
+    }
+    const recentTransactions = recentPool
+        .sort((a, b) => b.date.getTime() - a.date.getTime())
+        .slice(0, 10)
+        .map((t) => ({
+        id: t.id,
+        date: t.date,
+        category: t.category,
+        note: t.note ?? "",
+        type: t.type,
+        amount: Math.round(t.amount * 100) / 100,
+    }));
     // BudgetCreator stores the total monthly budget in `totalLimit` (duplicated per category row).
     // Use the max to be resilient if a partial save occurred.
     const totalBudget = budgets.reduce((max, b) => (b.totalLimit > max ? b.totalLimit : max), 0);
-    const expenseItems = expenses.filter((e) => e.type === "EXPENSE");
+    const expenseItems = expenses.filter((e) => {
+        const t = e.type;
+        return t !== "INCOME";
+    });
     const incomeItems = expenses.filter((e) => e.type === "INCOME");
     const totalExpense = expenseItems.reduce((sum, e) => sum + e.amount, 0);
     const totalIncome = incomeItems.reduce((sum, e) => sum + e.amount, 0);
@@ -87,7 +139,8 @@ dashboardRouter.get("/", authRequired, async (req, res) => {
     // Spending by category (for pie chart): { name, value, color }
     const spentByCategory = new Map();
     for (const e of expenseItems) {
-        spentByCategory.set(e.category, (spentByCategory.get(e.category) ?? 0) + e.amount);
+        const cat = canonicalCategory(e.category);
+        spentByCategory.set(cat, (spentByCategory.get(cat) ?? 0) + e.amount);
     }
     // Include all BudgetCreator categories so the pie legend shows every option,
     // but 0-value categories won't render visible slices.
@@ -99,17 +152,22 @@ dashboardRouter.get("/", authRequired, async (req, res) => {
     // Remaining by category (for bar chart): { category, allocated, spent, remaining }
     const spentByCat = new Map();
     for (const e of expenseItems) {
-        spentByCat.set(e.category, (spentByCat.get(e.category) ?? 0) + e.amount);
+        const cat = canonicalCategory(e.category);
+        spentByCat.set(cat, (spentByCat.get(cat) ?? 0) + e.amount);
     }
-    const categorySet = new Set(BUDGET_CATEGORIES);
-    const remainingByCategory = Array.from(categorySet).map((category) => {
-        const allocated = budgets.find((b) => b.category === category)?.allocated ?? 0;
+    const allocatedByCanonical = new Map();
+    for (const b of budgets) {
+        const cat = canonicalCategory(b.category);
+        allocatedByCanonical.set(cat, (allocatedByCanonical.get(cat) ?? 0) + b.allocated);
+    }
+    const remainingByCategory = BUDGET_CATEGORIES.map((category) => {
+        const allocated = allocatedByCanonical.get(category) ?? 0;
         const spent = spentByCat.get(category) ?? 0;
         return {
             category,
             allocated: Math.round(allocated * 100) / 100,
             spent: Math.round(spent * 100) / 100,
-            // "Budget Remaining" in the UI is the allocated envelope amount (positive).
+            // "Budget Remaining" bar uses the allocated budget from Budget Creator.
             remaining: Math.round(allocated * 100) / 100,
         };
     });
@@ -125,5 +183,8 @@ dashboardRouter.get("/", authRequired, async (req, res) => {
         remaining: Math.round(remaining * 100) / 100,
         categoryBreakdown,
         remainingByCategory,
+        recentTransactionsMonth: recentTransactionsSourceMonth,
+        recentTransactionsYear: recentTransactionsSourceYear,
+        recentTransactions,
     });
 });
