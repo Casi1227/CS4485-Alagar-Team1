@@ -55,10 +55,20 @@ budgetsRouter.post("/", authRequired, async (req: AuthedRequest, res) => {
 
   const userId = req.user!.id;
   const { month, year, totalLimit, categories } = parsed.data;
+  const incomingCategoryNames = categories.map((c) => c.category);
 
-  // Upsert each category row
-  await prisma.$transaction(
-    categories.map((c) =>
+  // Keep only the current submitted categories for that month/year.
+  // This removes stale/legacy category rows that can skew dashboard bars.
+  await prisma.$transaction([
+    prisma.budget.deleteMany({
+      where: {
+        userId,
+        month,
+        year,
+        category: { notIn: incomingCategoryNames },
+      },
+    }),
+    ...categories.map((c) =>
       prisma.budget.upsert({
         where: {
           user_month_year_category: {
@@ -84,7 +94,7 @@ budgetsRouter.post("/", authRequired, async (req: AuthedRequest, res) => {
         },
       })
     ),
-  );
+  ]);
 
   return res.json({ ok: true });
 });

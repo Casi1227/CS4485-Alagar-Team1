@@ -1,6 +1,5 @@
 # Backend database.
 *.db
-/budgetwise/backend/prisma/migrations/*/
 
 # env files.
 .env

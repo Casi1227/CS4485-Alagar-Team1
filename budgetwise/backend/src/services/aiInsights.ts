@@ -18,7 +18,7 @@ import {
  * Used to build the prompt for Groq.
  */
 export const categorySpendSummarySchema = z.object({
-  category: z.string().describe("The spending category (e.g., 'Food & Dining')"),
+  category: z.string().describe("The spending category (e.g., 'Dining', 'Rent')"),
   spent: z.number().nonnegative().describe("Amount spent in this category (dollars)"),
   allocated: z.number().nonnegative().describe("Budget allocated for this category (dollars)"),
 });

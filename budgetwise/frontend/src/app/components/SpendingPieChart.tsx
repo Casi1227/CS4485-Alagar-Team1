@@ -3,14 +3,14 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from 'recha
 export type SpendingPieDatum = { name: string; value: number; color: string };
 
 const defaultSpendingData: SpendingPieDatum[] = [
-  { name: 'Rent', value: 500, color: '#6366F1' },
+  { name: 'Rent', value: 420, color: '#6366F1' },
   { name: 'Groceries', value: 180, color: '#16A34A' },
   { name: 'Tuition', value: 250, color: '#A855F7' },
   { name: 'Transportation', value: 85, color: '#4ECDC4' },
-  { name: 'Entertainment', value: 125, color: '#FFA07A' },
+  { name: 'Entertainment', value: 125, color: '#F97316' },
   { name: 'Utilities', value: 67.5, color: '#D97706' },
   { name: 'Health', value: 45, color: '#0891B2' },
-  { name: 'Dining', value: 95, color: '#DC2626' },
+  { name: 'Dining', value: 320, color: '#DC2626' },
   { name: 'Other', value: 40, color: '#95A5A6' },
 ];
 
