@@ -269,7 +269,7 @@ unknown_local_recipient_reject_code = 550
 # only the local machine.
 # 
 #mynetworks_style = class
-#mynetworks_style = subnet
+mynetworks_style = subnet
 #mynetworks_style = host
 
 # Alternatively, you can specify the mynetworks list by hand, in

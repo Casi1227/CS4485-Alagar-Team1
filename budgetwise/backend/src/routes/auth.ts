@@ -85,16 +85,10 @@ authRouter.post("/forgot-password", async (req, res) => {
         create: { userId: user.id, keyHash },
     });
 
-    const mailTransport = nodemailer.createTransport({
-        host: env.MAIL_SERVER_NAME,
-        port: env.MAIL_SERVER_PORT,
-        secure: env.MAIL_SERVER_TLS_WRAPPER_MODE,
-        ignoreTLS: env.MAIL_SERVER_TLS_SECURITY_LEVEL == 0,
-        requireTLS: env.MAIL_SERVER_TLS_SECURITY_LEVEL == 2,
-    });
+    const mailTransport = nodemailer.createTransport(env.MAIL_SERVER_URL);
 
     let resetPasswordUrl = new URL("/reset-password", env.CORS_ORIGIN);
-    resetPasswordUrl.hostname = env.FRONTEND_HOSTNAME;
+    resetPasswordUrl.hostname = env.FRONTEND_SERVER_NAME;
     resetPasswordUrl.searchParams.set("email", user.email);
     resetPasswordUrl.searchParams.set("key", key);
 
@@ -132,6 +126,7 @@ Budgetwise\
     try {
         await mailTransport.sendMail(resetPasswordEmailMessage);
     } catch (err) {
+        //console.error(err);
         return res.status(500).json({ error: err });
     }
 
