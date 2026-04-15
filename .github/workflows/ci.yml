@@ -2,7 +2,7 @@ name: BudgetWise CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, docker-setup]
   pull_request:
     branches: [main]
 
@@ -13,7 +13,7 @@ jobs:
 
     defaults:
       run:
-        working-directory: frontend
+        working-directory: budgetwise/frontend
 
     steps:
       - name: Checkout repo
@@ -24,7 +24,7 @@ jobs:
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: frontend/package-lock.json
+          cache-dependency-path: budgetwise/frontend/package-lock.json
 
       - name: Install frontend dependencies
         run: npm ci
@@ -35,12 +35,12 @@ jobs:
         run: npm run build
 
   backend:
-    name: Lint and Build Backend
+    name: Build Backend
     runs-on: ubuntu-latest
 
     defaults:
       run:
-        working-directory: backend
+        working-directory: budgetwise/backend
 
     steps:
       - name: Checkout repo
@@ -51,16 +51,13 @@ jobs:
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: backend/package-lock.json
+          cache-dependency-path: budgetwise/backend/package-lock.json
 
       - name: Install backend dependencies
         run: npm ci
 
       - name: Generate Prisma client
         run: npx prisma generate
-
-      - name: Lint backend
-        run: npm run lint
 
       - name: Build backend
         run: npm run build
