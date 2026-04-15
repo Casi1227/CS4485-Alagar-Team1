@@ -1,0 +1,41 @@
+# Backend database.
+*.db
+
+# env files.
+.env
+.env.*
+
+!.env.example
+!.env.*.example
+
+# LibreOffice lock files.
+.~lock.*#
+
+# Vim swap files.
+.sw*
+.*.sw*
+
+# Next.js.
+build/
+out/
+.next/
+.turbo/
+.vercel/
+
+# Node.js.
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# macOS.
+.DS_Store
+__MACOSX
+Thumbs.db
+
+# Build output
+dist/
+
+# Docker
+docker-compose.override.yml
