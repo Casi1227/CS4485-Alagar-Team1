@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { CreditCard, Settings, LogOut, User, ChevronDown, Menu, X, LayoutDashboard, Receipt, Sparkles, CalendarDays } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { usePlaidLink } from 'react-plaid-link';
-import { createPlaidLinkToken, exchangePlaidPublicToken } from '../lib/api';
+import { createPlaidLinkToken, demoPlaidImport, exchangePlaidPublicToken, PLAID_DEMO_DIRECT_IMPORT_ENABLED } from '../lib/api';
 
 export function Header() {
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
@@ -51,6 +51,18 @@ export function Header() {
 
     try {
       setIsPreparingPlaid(true);
+
+      if (PLAID_DEMO_DIRECT_IMPORT_ENABLED) {
+        const result = await demoPlaidImport();
+        const summary = result.importSummary;
+        alert(
+          `Plaid account linked. Imported ${summary.created} new, ${summary.updated} updated, ${summary.removed} removed, ${summary.skipped} skipped transactions.`,
+        );
+        window.dispatchEvent(new Event('bw:plaid-sync'));
+        window.location.reload();
+        return;
+      }
+
       const data = await createPlaidLinkToken();
       setPlaidToken(data.linkToken);
       setShouldOpenPlaid(true);

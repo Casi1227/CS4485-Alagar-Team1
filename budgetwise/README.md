@@ -192,4 +192,8 @@ Notes
 	* Username: user_good
 	* Password: pass_good
 * After linking, BudgetWise imports the last 30 days of transactions and maps them to app categories.
+* Demo direct import mode (skip Plaid Link UI):
+	* In backend/.env: PLAID_DEMO_DIRECT_IMPORT_ENABLED="true"
+	* In frontend/.env.local: NEXT_PUBLIC_PLAID_DEMO_DIRECT_IMPORT_ENABLED="true"
+	* With both enabled, clicking "Link with Plaid" imports Sandbox transactions directly.
 ---

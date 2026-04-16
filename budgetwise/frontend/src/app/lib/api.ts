@@ -6,6 +6,8 @@
  */
 
 const baseUrl = (process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5001').replace(/\/$/, '');
+export const PLAID_DEMO_DIRECT_IMPORT_ENABLED =
+  process.env.NEXT_PUBLIC_PLAID_DEMO_DIRECT_IMPORT_ENABLED === 'true';
 
 export type AiBudgetSuggestionsRequest = {
   income: number;
@@ -74,6 +76,12 @@ export async function exchangePlaidPublicToken(publicToken: string): Promise<Pla
   });
 }
 
+export async function demoPlaidImport(): Promise<PlaidExchangeResponse> {
+  return apiJson('/api/plaid/demo-import', {
+    method: 'POST',
+  });
+}
+
 export async function listPlaidLinkedAccounts(): Promise<{ linkedAccounts: LinkedPlaidAccount[] }> {
   return apiJson('/api/plaid/accounts', { method: 'GET' });
 }
@@ -94,12 +102,23 @@ export async function apiJson(path: string, init: RequestInit = {}) {
   const token = typeof window !== 'undefined' ? localStorage.getItem('bw_token') : null;
   if (token && !headers.has('Authorization')) headers.set('Authorization', `Bearer ${token}`);
 
-  const res = await fetch(url, { ...init, headers });
+  let res: Response;
+  try {
+    res = await fetch(url, { ...init, headers });
+  } catch {
+    throw new Error(`Unable to reach the API at ${baseUrl}. Please verify the backend is running and your browser origin is allowed.`);
+  }
   const text = await res.text();
   const data = text ? safeJsonParse(text) : null;
 
   if (!res.ok) {
+    if (res.status === 401 && typeof window !== 'undefined') {
+      localStorage.removeItem('bw_token');
+    }
     const msg = data?.error?.message || data?.error || `Request failed (${res.status})`;
+    if (res.status === 401) {
+      throw new Error('Session expired. Please sign in again.');
+    }
     throw new Error(typeof msg === 'string' ? msg : 'Request failed');
   }
   return data;

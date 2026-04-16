@@ -27,7 +27,7 @@ services:
       DATABASE_URL: postgresql://myapp:secret@db:5432/myapp_db
       JWT_SECRET: budgetwise_dev_secret_9f3a2c1d7e6b5a4c8d1f0e9b2a7c6d5e
       PORT: 5001
-      CORS_ORIGIN: http://localhost:10000
+      CORS_ORIGIN: http://localhost:3000,http://localhost:10000
       MAIL_SERVER_NAME: localhost
       MAIL_SERVER_PORT: 465
       MAIL_SERVER_SECURE: "true"

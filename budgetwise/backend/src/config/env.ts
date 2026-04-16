@@ -35,6 +35,7 @@ const envSchema = z.object({
   PLAID_COUNTRY_CODES: z.string().default("US"),
   PLAID_LANGUAGE: z.string().default("en"),
   PLAID_REDIRECT_URI: z.string().optional(),
+  PLAID_DEMO_DIRECT_IMPORT_ENABLED: z.coerce.boolean().default(false),
 });
 
 export type Env = z.infer<typeof envSchema>;
