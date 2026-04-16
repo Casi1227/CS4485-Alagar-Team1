@@ -1,0 +1,74 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  createdAt    DateTime @default(now())
+
+  budgets               Budget[]
+  expenses              Expense[]
+  goals                 Goal[] // Phase 2+
+  resetPasswordRequests ResetPasswordRequest?
+}
+
+enum TransactionType {
+  EXPENSE
+  INCOME
+}
+
+model Expense {
+  id       String          @id @default(cuid())
+  userId   String
+  amount   Float
+  category String
+  type     TransactionType @default(EXPENSE)
+  date     DateTime
+  note     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, date])
+}
+
+model Budget {
+  id         String @id @default(cuid())
+  userId     String
+  month      Int
+  year       Int
+  totalLimit Float // The "Envelope"
+  category   String // e.g., "Food"
+  allocated  Float // Portion of totalLimit
+  percent    Float  @default(0)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, month, year, category], name: "user_month_year_category")
+  @@index([userId, year, month])
+}
+
+model Goal {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String
+  target    Float
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model ResetPasswordRequest {
+  userId    String   @id
+  keyHash   String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}

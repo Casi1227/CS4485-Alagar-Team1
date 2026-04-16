@@ -1,11 +1,15 @@
-# Dependencies.
-node_modules/
+# Backend database.
+*.db
+/budgetwise/backend/prisma/migrations/*/
 
 # env files.
 .env
 .env.*
 
-# Ignore Libreoffice lock files.
+!.env.example
+!.env.*.example
+
+# LibreOffice lock files.
 .~lock.*#
 
 # Vim swap files.
@@ -13,10 +17,11 @@ node_modules/
 .*.sw*
 
 # Next.js.
-.next/
+build/
 out/
-.vercel/
+.next/
 .turbo/
+.vercel/
 
 # Node.js.
 node_modules/
@@ -24,3 +29,14 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+
+# macOS.
+.DS_Store
+__MACOSX
+Thumbs.db
+
+# Build output
+dist/
+
+# Docker
+docker-compose.override.yml
