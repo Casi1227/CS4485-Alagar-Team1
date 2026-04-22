@@ -19,6 +19,11 @@ Start the development server:
 
 npm run dev
 
+Optional demo mode for Plaid direct import (skip Plaid Link UI):
+
+Set NEXT_PUBLIC_PLAID_DEMO_DIRECT_IMPORT_ENABLED="true" in frontend/.env.local
+(requires matching backend flag PLAID_DEMO_DIRECT_IMPORT_ENABLED="true").
+
 The application will run at:
 
 http://localhost:3000

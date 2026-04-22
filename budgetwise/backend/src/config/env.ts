@@ -25,6 +25,15 @@ const envSchema = z.object({
   GROQ_MAX_TOKENS_INSIGHTS: z.coerce.number().int().positive().default(420),
   GROQ_MAX_TOKENS_COMPARISON: z.coerce.number().int().positive().default(480),
   GROQ_MAX_INPUT_CATEGORIES: z.coerce.number().int().positive().default(8),
+  // Plaid Sandbox configuration.
+  PLAID_CLIENT_ID: z.string().default("PLAID-SANDBOX-KEY"),
+  PLAID_SECRET: z.string().default("PLAID-SANDBOX-KEY"),
+  PLAID_ENV: z.enum(["sandbox", "development", "production"]).default("sandbox"),
+  PLAID_PRODUCTS: z.string().default("transactions"),
+  PLAID_COUNTRY_CODES: z.string().default("US"),
+  PLAID_LANGUAGE: z.string().default("en"),
+  PLAID_REDIRECT_URI: z.string().optional(),
+  PLAID_DEMO_DIRECT_IMPORT_ENABLED: z.coerce.boolean().default(false),
 });
 
 export type Env = z.infer<typeof envSchema>;

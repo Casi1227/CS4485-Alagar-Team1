@@ -1,25 +1,13 @@
 import { Router } from "express";
 import { prisma } from "../lib/prisma.js";
 import { authRequired, type AuthedRequest } from "../middleware/authRequired.js";
+import { BUDGET_CATEGORIES, CATEGORY_COLORS } from "../lib/categories.js";
 
 /**
  * Dashboard summary: spend totals, category breakdown, budget progress for a given month.
  * GET /api/dashboard?month=3&year=2026 (month/year optional; default = real-world current month)
  */
 export const dashboardRouter = Router();
-
-// Canonical 9 categories — keep in sync with `frontend/src/app/lib/expenseCategories.ts`.
-const BUDGET_CATEGORIES = [
-  "Rent",
-  "Groceries",
-  "Tuition",
-  "Transportation",
-  "Entertainment",
-  "Utilities",
-  "Health",
-  "Dining",
-  "Other",
-] as const;
 
 /** Map old/alt labels from older data into one of BUDGET_CATEGORIES. */
 const LEGACY_CATEGORY_MAP: Record<string, string> = {
@@ -29,19 +17,6 @@ const LEGACY_CATEGORY_MAP: Record<string, string> = {
   "health & fitness": "Health",
   savings: "Other",
   housing: "Rent",
-};
-
-const CATEGORY_COLORS: Record<string, string> = {
-  // Canonical expense categories
-  Rent: "#6366F1",
-  Groceries: "#16A34A",
-  Tuition: "#A855F7",
-  Transportation: "#4ECDC4",
-  Entertainment: "#F97316",
-  Utilities: "#D97706",
-  Health: "#0891B2",
-  Dining: "#DC2626",
-  Other: "#95A5A6",
 };
 
 function normalizeCategory(category: string): string {

@@ -83,9 +83,7 @@ docker compose down
 
 1. Place file:
 
-```
-backend/mock-data/personal_transactions_budgetwise_2025_2026.xlsx
-```
+backend/mock-data/personal/transactions/budgetwise/2025/2026.xlsx
 
 2. Start services:
 
@@ -270,3 +268,27 @@ docker compose up --build
 * App will be deployed using Docker on Render
 * CI must pass before merging to main
 * Health endpoint should be available at `/health`
+
+
+Notes
+
+
+# Notes
+
+• Do not commit backend/.env  
+• Do not commit frontend/.env.local  
+• Do not commit node modules
+• Keep API keys server side only  
+• Use PostgreSQL for all environments
+* Keep Groq API keys server side only
+
+* Replace PLAID-SANDBOX-KEY values with your real Plaid Sandbox keys from the Plaid Dashboard.
+* Test credentials for manual Link flow:
+	* Username: user_good
+	* Password: pass_good
+* After linking, BudgetWise imports the last 30 days of transactions and maps them to app categories.
+* Demo direct import mode (skip Plaid Link UI):
+	* In backend/.env: PLAID_DEMO_DIRECT_IMPORT_ENABLED="true"
+	* In frontend/.env.local: NEXT_PUBLIC_PLAID_DEMO_DIRECT_IMPORT_ENABLED="true"
+	* With both enabled, clicking "Link with Plaid" imports Sandbox transactions directly.
+---
