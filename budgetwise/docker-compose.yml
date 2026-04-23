@@ -48,7 +48,7 @@ services:
       OPENAI_API_KEY: ""
       MOCK_DATA_XLSX: /app/mock-data/personal_transactions_budgetwise_2025_2026.xlsx
       FRONTEND_SERVER_NAME: www.budgetwise.local
-      MAIL_SERVER_URL: smtp://mail.budgetwise.local:587/?ignoreTLS=true
+      MAIL_SERVER_URL: smtp://mail.budgetwise.local/?ignoreTLS=true
       MAIL_SERVER_DOMAIN: budgetwise.local
     hostname: backend.budgetwise.local
     ports:
