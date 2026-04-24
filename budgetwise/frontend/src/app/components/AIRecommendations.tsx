@@ -1,7 +1,6 @@
-import { useState, useEffect } from 'react';
 import { TrendingDown, TrendingUp, Sparkles, CheckCircle, Loader2 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { apiJson } from '../lib/api';
+import useSWR from 'swr';
 
 // ===== Type Definitions =====
 /**
@@ -76,92 +75,28 @@ function getRecommendationBulletPoints(message: string): string[] {
  * 2. Dynamic "Recommended Actions" - fetched from /api/ai/dashboard-insights
  */
 export function AIRecommendations({ month, year }: { month?: number; year?: number }) {
-  // ===== State Management =====
-  // Store the fetched recommendations from the API
-  const [recommendations, setRecommendations] = useState<Recommendation[] | null>(null);
-  const [comparisonItems, setComparisonItems] = useState<ComparisonItem[]>([]);
-  // Track loading state while fetching from API
-  const [loading, setLoading] = useState(true);
-  const [chartLoading, setChartLoading] = useState(true);
-  // Track error state if API call fails
-  const [error, setError] = useState<string | null>(null);
-  const [chartError, setChartError] = useState<string | null>(null);
+  const currentDate = new Date();
+  const queryMonth = month ?? currentDate.getMonth() + 1;
+  const queryYear = year ?? currentDate.getFullYear();
+  const insightsKey = `/api/ai/dashboard-insights?month=${queryMonth}&year=${queryYear}`;
+  const comparisonKey = `/api/ai/budget-comparison?month=${queryMonth}&year=${queryYear}`;
 
-  // ===== Effect: Fetch Recommendations =====
-  /**
-   * Fetches AI recommendations from the backend when component mounts or month/year changes.
-   * 
-   * Design Decision: Use useEffect to auto-trigger on page load.
-   * This matches the expected flow: user lands on dashboard → AI automatically generates insights.
-   * We don't require a button click or manual refresh to fetch recommendations.
-   * 
-   * Error Handling:
-   * - If API key is not configured (503): Show user-friendly message
-   * - If validation fails (422): Show generic retry message
-   * - If network error: Show error to assist debugging
-   * - If user navigates away before response: Ignore via cancelled flag
-   */
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setChartLoading(true);
-    setError(null);
-    setChartError(null);
+  const {
+    data: insightsData,
+    error: insightsError,
+    isLoading: loading,
+  } = useSWR<AIResponse>(insightsKey);
+  const {
+    data: comparisonData,
+    error: comparisonError,
+    isLoading: chartLoading,
+  } = useSWR<AIComparisonResponse>(comparisonKey);
 
-    // Use current month/year if not provided
-    const currentDate = new Date();
-    const queryMonth = month ?? currentDate.getMonth() + 1;
-    const queryYear = year ?? currentDate.getFullYear();
-
-    // Fetch recommendations from the backend AI endpoint
-    apiJson(`/api/ai/dashboard-insights?month=${queryMonth}&year=${queryYear}`)
-      .then((res: AIResponse) => {
-        // Only update state if component is still mounted
-        if (!cancelled) {
-          setRecommendations(res.recommendations);
-        }
-      })
-      .catch((err) => {
-        // Only update state if component is still mounted
-        if (!cancelled) {
-          // Provide different error messages based on the error
-          const errorMessage =
-            err instanceof Error ? err.message : 'Failed to load AI recommendations';
-          setError(errorMessage);
-        }
-      })
-      .finally(() => {
-        // Only update state if component is still mounted
-        if (!cancelled) {
-          setLoading(false);
-        }
-      });
-
-    // Fetch comparison data for chart bars from the AI endpoint
-    apiJson(`/api/ai/budget-comparison?month=${queryMonth}&year=${queryYear}`)
-      .then((res: AIComparisonResponse) => {
-        if (!cancelled) {
-          setComparisonItems(Array.isArray(res.items) ? res.items : []);
-        }
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          const errorMessage =
-            err instanceof Error ? err.message : 'Failed to load AI comparison data';
-          setChartError(errorMessage);
-        }
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setChartLoading(false);
-        }
-      });
-
-    // Cleanup: mark as cancelled if component unmounts
-    return () => {
-      cancelled = true;
-    };
-  }, [month, year]);
+  const recommendations = insightsData?.recommendations ?? null;
+  const comparisonItems = Array.isArray(comparisonData?.items) ? comparisonData.items : [];
+  const error = insightsError instanceof Error ? insightsError.message : insightsError ? 'Failed to load AI recommendations' : null;
+  const chartError =
+    comparisonError instanceof Error ? comparisonError.message : comparisonError ? 'Failed to load AI comparison data' : null;
 
   return (
     <div className="space-y-6">

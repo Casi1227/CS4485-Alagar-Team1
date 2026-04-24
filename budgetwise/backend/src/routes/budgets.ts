@@ -2,6 +2,7 @@ import { Router } from "express";
 import { prisma } from "../lib/prisma.js";
 import { authRequired, type AuthedRequest } from "../middleware/authRequired.js";
 import { upsertBudgetSchema } from "../validators/budgetSchemas.js";
+import { invalidateUserDashboardAndAiCache } from "../lib/requestCache.js";
 
 export const budgetsRouter = Router();
 
@@ -95,6 +96,7 @@ budgetsRouter.post("/", authRequired, async (req: AuthedRequest, res) => {
       })
     ),
   ]);
+  invalidateUserDashboardAndAiCache(userId);
 
   return res.json({ ok: true });
 });

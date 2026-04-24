@@ -2,6 +2,7 @@ import { Router } from "express";
 import { prisma } from "../lib/prisma.js";
 import { authRequired, type AuthedRequest } from "../middleware/authRequired.js";
 import { createExpenseSchema, updateExpenseSchema } from "../validators/expenseSchemas.js";
+import { invalidateUserDashboardAndAiCache } from "../lib/requestCache.js";
 
 /**
  * R-102: CRUD expenses with backdating (date field).
@@ -62,6 +63,7 @@ expensesRouter.post("/", authRequired, async (req: AuthedRequest, res) => {
       note: parsed.data.note,
     },
   });
+  invalidateUserDashboardAndAiCache(userId);
 
   res.status(201).json({ expense: created });
 });
@@ -86,6 +88,7 @@ expensesRouter.put("/:id", authRequired, async (req: AuthedRequest, res) => {
       note: parsed.data.note,
     },
   });
+  invalidateUserDashboardAndAiCache(userId);
 
   res.json({ expense: updated });
 });
@@ -98,5 +101,6 @@ expensesRouter.delete("/:id", authRequired, async (req: AuthedRequest, res) => {
   if (!existing || existing.userId !== userId) return res.status(404).json({ error: "Expense not found" });
 
   await prisma.expense.delete({ where: { id } });
+  invalidateUserDashboardAndAiCache(userId);
   res.json({ ok: true });
 });

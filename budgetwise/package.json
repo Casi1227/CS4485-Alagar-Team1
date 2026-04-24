@@ -1,0 +1,13 @@
+{
+  "name": "budgetwise-load-tests",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "load:smoke": "docker run --rm -i --add-host=host.docker.internal:host-gateway -e BASE_URL=http://host.docker.internal:5001 -v \"%cd%/load-tests:/scripts\" grafana/k6 run /scripts/k6-smoke.js",
+    "load:ramp": "docker run --rm -i --add-host=host.docker.internal:host-gateway -e BASE_URL=http://host.docker.internal:5001 -v \"%cd%/load-tests:/scripts\" grafana/k6 run /scripts/k6-ramp.js",
+    "load:stress": "docker run --rm -i --add-host=host.docker.internal:host-gateway -e BASE_URL=http://host.docker.internal:5001 -v \"%cd%/load-tests:/scripts\" grafana/k6 run /scripts/k6-stress.js",
+    "load:smoke:auth": "powershell -ExecutionPolicy Bypass -File ./load-tests/run-k6-with-login.ps1 -Scenario smoke",
+    "load:ramp:auth": "powershell -ExecutionPolicy Bypass -File ./load-tests/run-k6-with-login.ps1 -Scenario ramp",
+    "load:stress:auth": "powershell -ExecutionPolicy Bypass -File ./load-tests/run-k6-with-login.ps1 -Scenario stress"
+  }
+}
