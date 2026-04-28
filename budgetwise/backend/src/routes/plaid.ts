@@ -6,6 +6,7 @@ import { authRequired, type AuthedRequest } from "../middleware/authRequired.js"
 import { env } from "../config/env.js";
 import { getPlaidCountryCodes, plaidClient } from "../services/plaidClient.js";
 import { syncLinkedAccountTransactions } from "../services/plaidImport.js";
+import { invalidateUserDashboardAndAiCache } from "../lib/requestCache.js";
 
 const prismaAny = prisma as any;
 
@@ -149,6 +150,7 @@ plaidRouter.post("/exchange-public-token", authRequired, asyncAuthedRoute(async 
   const linkedAccount = await exchangeAndUpsertLinkedAccount(userId, parsed.data.publicToken);
 
   const syncSummary = await syncLinkedAccountTransactions(userId, linkedAccount.id, 30);
+  invalidateUserDashboardAndAiCache(userId);
 
   res.status(201).json({
     linkedAccount: serializeLinkedAccount(linkedAccount),
@@ -182,6 +184,7 @@ plaidRouter.post("/demo-import", authRequired, asyncAuthedRoute(async (req, res)
     await wait(2000);
     syncSummary = await syncLinkedAccountTransactions(userId, linkedAccount.id, 30);
   }
+  invalidateUserDashboardAndAiCache(userId);
 
   res.status(201).json({
     linkedAccount: serializeLinkedAccount(linkedAccount),
@@ -199,6 +202,7 @@ plaidRouter.post("/sync", authRequired, asyncAuthedRoute(async (req, res) => {
   const userId = req.user!.id;
   await assertUserExists(userId);
   const summary = await syncLinkedAccountTransactions(userId, parsed.data.linkedAccountId);
+  invalidateUserDashboardAndAiCache(userId);
   res.json({ summary });
 }));
 

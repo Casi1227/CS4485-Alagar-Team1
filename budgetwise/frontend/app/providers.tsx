@@ -3,8 +3,10 @@
 import type { ReactNode } from 'react';
 import { useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
+import { SWRConfig } from 'swr';
 import { AuthProvider, useAuth } from '../src/app/context/AuthContext';
 import { Header } from '../src/app/components/Header';
+import { apiJson } from '../src/app/lib/api';
 
 function AppShell({ children }: { children: ReactNode }) {
   const { isAuthenticated } = useAuth();
@@ -43,7 +45,19 @@ function AppShell({ children }: { children: ReactNode }) {
 export function Providers({ children }: { children: ReactNode }) {
   return (
     <AuthProvider>
-      <AppShell>{children}</AppShell>
+      <SWRConfig
+        value={{
+          fetcher: (key: string) => apiJson(key),
+          dedupingInterval: 20_000,
+          focusThrottleInterval: 30_000,
+          revalidateOnFocus: false,
+          revalidateIfStale: false,
+          revalidateOnReconnect: true,
+          shouldRetryOnError: false,
+        }}
+      >
+        <AppShell>{children}</AppShell>
+      </SWRConfig>
     </AuthProvider>
   );
 }

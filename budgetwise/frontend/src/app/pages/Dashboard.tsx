@@ -1,10 +1,9 @@
-import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { TrendingUp, TrendingDown, DollarSign, AlertCircle, Loader2 } from 'lucide-react';
+import useSWR from 'swr';
 import { SpendingPieChart } from '../components/SpendingPieChart';
 import { RemainingBudgetChart } from '../components/RemainingBudgetChart';
 import { AIRecommendations } from '../components/AIRecommendations';
-import { apiJson } from '../lib/api';
 
 const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
@@ -32,26 +31,7 @@ export type DashboardData = {
 };
 
 export function Dashboard() {
-  const [data, setData] = useState<DashboardData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-    apiJson('/api/dashboard')
-      .then((res: DashboardData) => {
-        if (!cancelled) setData(res);
-      })
-      .catch((err) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load dashboard');
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => { cancelled = true; };
-  }, []);
+  const { data, error, isLoading } = useSWR<DashboardData>('/api/dashboard');
 
   const totalBudget = data?.totalBudget ?? 0;
   const totalExpense = data?.totalExpense ?? data?.totalSpent ?? 0;
@@ -63,7 +43,7 @@ export function Dashboard() {
     ? `${MONTH_NAMES[data.month - 1]} ${data.year}`
     : `${MONTH_NAMES[new Date().getMonth()]} ${new Date().getFullYear()}`;
 
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="p-6 flex items-center justify-center min-h-[40vh]">
         <Loader2 className="w-10 h-10 text-indigo-600 animate-spin" />
@@ -76,7 +56,7 @@ export function Dashboard() {
       <div className="p-6">
         <div className="max-w-7xl mx-auto rounded-xl bg-red-50 border border-red-200 p-6 text-red-800">
           <p className="font-medium">Could not load dashboard</p>
-          <p className="text-sm mt-1">{error}</p>
+          <p className="text-sm mt-1">{error instanceof Error ? error.message : 'Failed to load dashboard'}</p>
         </div>
       </div>
     );
