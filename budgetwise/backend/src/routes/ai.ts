@@ -8,6 +8,7 @@ import {
   CategorySpendSummary,
 } from "../services/aiInsights.js";
 import { aiBudgetSuggestionsRequestSchema } from "../validators/budgetSchemas.js";
+import { getOrSetRequestCache } from "../lib/requestCache.js";
 
 /**
  * ===== AI Insights Router =====
@@ -34,6 +35,7 @@ import { aiBudgetSuggestionsRequestSchema } from "../validators/budgetSchemas.js
  * - Matches the parameter structure of /api/dashboard endpoint
  */
 export const aiRouter = Router();
+const AI_CACHE_TTL_MS = 5 * 60_000;
 
 /**
  * GET /api/ai/dashboard-insights
@@ -160,7 +162,12 @@ aiRouter.get("/dashboard-insights", authRequired, async (req: AuthedRequest, res
 
     // Call Groq to generate recommendations
     try {
-      const recommendations = await generateDashboardInsights(spendingSummary, month, year);
+      const insightsCacheKey = `ai:insights:${userId}:${month}:${year}`;
+      const recommendations = await getOrSetRequestCache(
+        insightsCacheKey,
+        AI_CACHE_TTL_MS,
+        () => generateDashboardInsights(spendingSummary, month, year),
+      );
 
       // Success: return the AI-generated recommendations
       // The frontend expects exactly this structure (3 recommendations + timestamp)
@@ -388,7 +395,12 @@ aiRouter.get("/budget-comparison", authRequired, async (req: AuthedRequest, res)
     }
 
     try {
-      const comparison = await generateBudgetComparison(spendingSummary, totalIncome, month, year);
+      const comparisonCacheKey = `ai:comparison:${userId}:${month}:${year}`;
+      const comparison = await getOrSetRequestCache(
+        comparisonCacheKey,
+        AI_CACHE_TTL_MS,
+        () => generateBudgetComparison(spendingSummary, totalIncome, month, year),
+      );
       return res.json(comparison);
     } catch (aiError) {
       if (aiError instanceof Error && aiError.message.includes("GROQ_API_KEY not configured")) {
