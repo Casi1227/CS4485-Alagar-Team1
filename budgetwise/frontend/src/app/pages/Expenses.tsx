@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Calendar, DollarSign, Trash2, Plus, Save, Minus, Pencil, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { z } from 'zod';
-import { apiJson } from '../lib/api';
+import { apiJson, fetchAllExpenses } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import { STANDARD_EXPENSE_CATEGORIES } from '../lib/expenseCategories';
 
@@ -38,6 +38,22 @@ type FieldErrors = {
   note?: string;
   type?: string;
 };
+
+function toLocalYmd(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function toUtcYmd(value: string | Date): string {
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return '';
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(d.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
 
 export function Expenses() {
   const { isAuthenticated } = useAuth();
@@ -92,7 +108,7 @@ export function Expenses() {
   const [type, setType] = useState<TxType>('EXPENSE');
   const [amount, setAmount] = useState('');
   const [category, setCategory] = useState<string>(expenseCategories[0]);
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(() => toLocalYmd(new Date()));
   const [note, setNote] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -126,14 +142,15 @@ export function Expenses() {
     setLoading(true);
     setError(null);
     try {
-      const data = await apiJson('/api/expenses');
+      const rows = await fetchAllExpenses({ limit: 250, maxPages: 200 });
+
       setItems(
-        (data?.expenses || []).map((e: any) => ({
+        rows.map((e: any) => ({
           id: e.id,
           amount: e.amount,
           category: e.category,
           type: (e.type || 'EXPENSE') as TxType,
-          date: new Date(e.date).toISOString(),
+          date: e.date,
           note: e.note,
         })),
       );
@@ -154,7 +171,7 @@ export function Expenses() {
     const m = selectedMonthDate.getMonth();
     return items.filter((x) => {
       const d = new Date(x.date);
-      return d.getFullYear() === y && d.getMonth() === m;
+      return d.getUTCFullYear() === y && d.getUTCMonth() === m;
     });
   }, [items, selectedMonthDate]);
 
@@ -181,7 +198,7 @@ export function Expenses() {
     if (historyScope === "YEAR") {
       return items.filter((x) => {
         const d = new Date(x.date);
-        return d.getFullYear() === selectedYear;
+        return d.getUTCFullYear() === selectedYear;
       });
     }
 
@@ -220,8 +237,8 @@ export function Expenses() {
     for (const it of items) {
       const d = new Date(it.date);
       if (Number.isNaN(d.getTime())) continue;
-      const key = `${d.getFullYear()}-${d.getMonth() + 1}`;
-      if (!map.has(key)) map.set(key, new Date(d.getFullYear(), d.getMonth(), 1));
+      const key = `${d.getUTCFullYear()}-${d.getUTCMonth() + 1}`;
+      if (!map.has(key)) map.set(key, new Date(d.getUTCFullYear(), d.getUTCMonth(), 1));
     }
     const arr = Array.from(map.values());
     arr.sort((a, b) => a.getTime() - b.getTime());
@@ -394,7 +411,7 @@ export function Expenses() {
     setEditType(item.type);
     setEditAmount(item.amount.toString());
     setEditCategory(item.category);
-    setEditDate(new Date(item.date).toISOString().slice(0, 10));
+    setEditDate(toUtcYmd(item.date));
     setEditNote(item.note || '');
     setEditFieldErrors({});
     setError(null);
@@ -780,6 +797,7 @@ export function Expenses() {
                               month: 'short',
                               day: 'numeric',
                               year: 'numeric',
+                              timeZone: 'UTC',
                             })}
                           </div>
                         </td>

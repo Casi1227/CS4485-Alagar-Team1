@@ -40,3 +40,6 @@ dist/
 
 # Docker
 docker-compose.override.yml
+
+# Local load-test payloads (may contain tokens or passwords).
+budgetwise/autocannon-*.json

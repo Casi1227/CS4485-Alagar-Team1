@@ -1,0 +1,2 @@
+-- Intentionally left as a no-op.
+-- This migration duplicates the initial schema migration and causes enum/table re-creation conflicts.

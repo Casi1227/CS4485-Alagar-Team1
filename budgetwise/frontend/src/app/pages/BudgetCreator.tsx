@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Sparkles, DollarSign, TrendingUp, Lightbulb, ChevronRight, Check } from 'lucide-react';
-import { apiJson, fetchAiBudgetSuggestions } from '../lib/api';
+import { apiJson, fetchAiBudgetSuggestions, fetchAllExpenses, type ExpenseRecord } from '../lib/api';
 import { STANDARD_EXPENSE_CATEGORIES, type StandardExpenseCategory } from '../lib/expenseCategories';
 
 /** Suggested % splits (sum ≈ 100) for the 9 canonical categories. */
@@ -66,12 +66,13 @@ type AiProposalItem = {
   percent: number;
   amount: number;
 };
-type ExpenseTx = {
-  amount: number;
-  category: string;
+type ExpenseTx = ExpenseRecord & {
   type: 'EXPENSE' | 'INCOME';
-  date: string;
 };
+
+function isExpenseTx(row: ExpenseRecord): row is ExpenseTx {
+  return row.type === 'EXPENSE' || row.type === 'INCOME';
+}
 
 function round2(n: number) {
   return Math.round(n * 100) / 100;
@@ -187,10 +188,10 @@ export function BudgetCreator() {
 
   useEffect(() => {
     let cancelled = false;
-    apiJson('/api/expenses')
-      .then((data: { expenses?: ExpenseTx[] }) => {
+    fetchAllExpenses({ limit: 250, maxPages: 200 })
+      .then((data) => {
         if (cancelled) return;
-        const rows = (data?.expenses ?? []).filter((t) => t.type === 'EXPENSE');
+        const rows = data.filter(isExpenseTx).filter((t) => t.type === 'EXPENSE');
         setExpenseHistory(rows);
       })
       .catch(() => {

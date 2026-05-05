@@ -18,7 +18,7 @@ import {
 
 import { Card } from "../components/ui/card";
 import { Input } from "../components/ui/input";
-import { apiJson } from "../lib/api";
+import { apiJson, fetchAllExpenses } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 
 interface Transaction {
@@ -107,10 +107,9 @@ export function Calendar() {
     // (Fallback to real current month when there are no transactions.)
     if (!didInitToLatestMonth.current) {
       didInitToLatestMonth.current = true;
-      apiJson(`/api/expenses`)
-        .then((data: { expenses?: unknown[] }) => {
+      fetchAllExpenses({ limit: 250, maxPages: 200 })
+        .then((items: { date: string }[]) => {
           if (cancelled) return;
-          const items = (data?.expenses || []) as { date: string }[];
           if (items.length === 0) return;
 
           let max = new Date(items[0]!.date);
@@ -137,10 +136,10 @@ export function Calendar() {
     const from = format(monthStart, "yyyy-MM-dd");
     const to = format(monthEnd, "yyyy-MM-dd");
 
-    apiJson(`/api/expenses?from=${from}&to=${to}`)
-      .then((data: { expenses?: unknown[] }) => {
+    fetchAllExpenses({ from, to, limit: 250, maxPages: 50 })
+      .then((items: unknown[]) => {
         if (cancelled) return;
-        const items = (data?.expenses || []) as {
+        const typed = items as {
           id: string;
           amount: number;
           category: string;
@@ -148,7 +147,7 @@ export function Calendar() {
           note?: string | null;
           type?: "EXPENSE" | "INCOME" | null;
         }[];
-        setTransactions(items.map(expenseToTransaction));
+        setTransactions(typed.map(expenseToTransaction));
       })
       .catch((err) => {
         if (!cancelled) setError(err instanceof Error ? err.message : "Failed to load expenses");

@@ -37,6 +37,8 @@ model Expense {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, date])
+  @@index([userId, type, date])
+  @@index([userId, date, id])
 }
 
 model Budget {

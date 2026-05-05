@@ -1,6 +1,6 @@
 import "dotenv/config";
 
-import bcrypt from "bcryptjs";
+import bcrypt from "bcrypt";
 import * as path from "node:path";
 import * as process from "node:process";
 import * as fs from "node:fs";

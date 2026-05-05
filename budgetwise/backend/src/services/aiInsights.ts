@@ -78,8 +78,6 @@ export type BudgetComparisonResponse = z.infer<typeof budgetComparisonResponseSc
 
 type OutputMode = "strict-json-schema" | "best-effort-json-schema" | "json-object" | "no-format";
 
-const STRICT_JSON_SCHEMA_MODELS = new Set(["openai/gpt-oss-20b", "openai/gpt-oss-120b"]);
-
 function trimSpendingData(spendingData: CategorySpendSummary[]): CategorySpendSummary[] {
   if (spendingData.length <= env.GROQ_MAX_INPUT_CATEGORIES) {
     return spendingData;

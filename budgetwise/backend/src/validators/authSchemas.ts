@@ -14,6 +14,10 @@ export const loginSchema = z.object({
   password: z.string().min(PASSWORD_MIN_LENGTH),
 });
 
+export const refreshTokenSchema = z.object({
+  refreshToken: z.string().min(20),
+});
+
 export const forgotPasswordSchema = z.object({
 	email: z.string().email(),
 });

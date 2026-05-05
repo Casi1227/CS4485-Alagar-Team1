@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { TransactionType } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
 import { authRequired, type AuthedRequest } from "../middleware/authRequired.js";
 
@@ -94,25 +95,43 @@ dashboardRouter.get("/", authRequired, async (req: AuthedRequest, res) => {
   const startOfMonth = new Date(Number(year), Number(month) - 1, 1);
   const endOfMonth = new Date(Number(year), Number(month), 0, 23, 59, 59, 999);
 
-  const [budgets, expenses] = await Promise.all([
+  const [budgets, groupedByType, groupedByCategory] = await Promise.all([
     prisma.budget.findMany({
       where: { userId, month, year },
     }),
-    prisma.expense.findMany({
+    prisma.expense.groupBy({
+      by: ["type"],
       where: {
         userId,
         date: { gte: startOfMonth, lte: endOfMonth },
       },
+      _sum: { amount: true },
+    }),
+    prisma.expense.groupBy({
+      by: ["category"],
+      where: {
+        userId,
+        type: TransactionType.EXPENSE,
+        date: { gte: startOfMonth, lte: endOfMonth },
+      },
+      _sum: { amount: true },
     }),
   ]);
 
   let recentTransactionsSourceMonth = Number(month);
   let recentTransactionsSourceYear = Number(year);
-  let recentPool = expenses;
+  let recentTransactions = await prisma.expense.findMany({
+    where: {
+      userId,
+      date: { gte: startOfMonth, lte: endOfMonth },
+    },
+    orderBy: [{ date: "desc" }, { id: "desc" }],
+    take: 10,
+  });
 
-  // If there are no transactions in the time-synced current month,
+  // If there are no transactions in the selected month,
   // fallback to the latest previous month that has data.
-  if (recentPool.length === 0) {
+  if (recentTransactions.length === 0) {
     const latestPrevious = await prisma.expense.findFirst({
       where: {
         userId,
@@ -127,20 +146,18 @@ dashboardRouter.get("/", authRequired, async (req: AuthedRequest, res) => {
       recentTransactionsSourceYear = latestPrevious.date.getFullYear();
       const sourceStart = new Date(recentTransactionsSourceYear, recentTransactionsSourceMonth - 1, 1);
       const sourceEnd = new Date(recentTransactionsSourceYear, recentTransactionsSourceMonth, 0, 23, 59, 59, 999);
-      recentPool = await prisma.expense.findMany({
+      recentTransactions = await prisma.expense.findMany({
         where: {
           userId,
           date: { gte: sourceStart, lte: sourceEnd },
         },
-        orderBy: { date: "desc" },
+        orderBy: [{ date: "desc" }, { id: "desc" }],
+        take: 10,
       });
     }
   }
 
-  const recentTransactions = recentPool
-    .sort((a, b) => b.date.getTime() - a.date.getTime())
-    .slice(0, 10)
-    .map((t) => ({
+  const recentTransactionsPayload = recentTransactions.map((t) => ({
       id: t.id,
       date: t.date,
       category: t.category,
@@ -152,14 +169,12 @@ dashboardRouter.get("/", authRequired, async (req: AuthedRequest, res) => {
   // BudgetCreator stores the total monthly budget in `totalLimit` (duplicated per category row).
   // Use the max to be resilient if a partial save occurred.
   const totalBudget = budgets.reduce((max, b) => (b.totalLimit > max ? b.totalLimit : max), 0);
-  const expenseItems = expenses.filter((e) => {
-    const t = (e as { type?: string }).type;
-    return t !== "INCOME";
-  });
-  const incomeItems = expenses.filter((e) => (e as { type?: string }).type === "INCOME");
-
-  const totalExpense = expenseItems.reduce((sum, e) => sum + e.amount, 0);
-  const totalIncome = incomeItems.reduce((sum, e) => sum + e.amount, 0);
+  const totalExpense = groupedByType
+    .filter((row) => row.type === TransactionType.EXPENSE)
+    .reduce((sum, row) => sum + (row._sum.amount ?? 0), 0);
+  const totalIncome = groupedByType
+    .filter((row) => row.type === TransactionType.INCOME)
+    .reduce((sum, row) => sum + (row._sum.amount ?? 0), 0);
   const net = totalIncome - totalExpense;
 
   // For budgeting, "Remaining" is based on expenses vs allocated budget.
@@ -167,9 +182,9 @@ dashboardRouter.get("/", authRequired, async (req: AuthedRequest, res) => {
 
   // Spending by category (for pie chart): { name, value, color }
   const spentByCategory = new Map<string, number>();
-  for (const e of expenseItems) {
-    const cat = canonicalCategory(e.category);
-    spentByCategory.set(cat, (spentByCategory.get(cat) ?? 0) + e.amount);
+  for (const row of groupedByCategory) {
+    const cat = canonicalCategory(row.category);
+    spentByCategory.set(cat, (spentByCategory.get(cat) ?? 0) + (row._sum.amount ?? 0));
   }
   // Include all BudgetCreator categories so the pie legend shows every option,
   // but 0-value categories won't render visible slices.
@@ -180,11 +195,7 @@ dashboardRouter.get("/", authRequired, async (req: AuthedRequest, res) => {
   }));
 
   // Remaining by category (for bar chart): { category, allocated, spent, remaining }
-  const spentByCat = new Map<string, number>();
-  for (const e of expenseItems) {
-    const cat = canonicalCategory(e.category);
-    spentByCat.set(cat, (spentByCat.get(cat) ?? 0) + e.amount);
-  }
+  const spentByCat = new Map(spentByCategory);
 
   const allocatedByCanonical = new Map<string, number>();
   for (const b of budgets) {
@@ -219,6 +230,6 @@ dashboardRouter.get("/", authRequired, async (req: AuthedRequest, res) => {
     remainingByCategory,
     recentTransactionsMonth: recentTransactionsSourceMonth,
     recentTransactionsYear: recentTransactionsSourceYear,
-    recentTransactions,
+    recentTransactions: recentTransactionsPayload,
   });
 });

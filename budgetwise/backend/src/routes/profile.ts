@@ -1,5 +1,5 @@
 import { Router } from "express";
-import bcrypt from "bcryptjs";
+import bcrypt from "bcrypt";
 import { prisma } from "../lib/prisma.js";
 import { authRequired, type AuthedRequest, PASSWORD_HASH_SALT } from "../middleware/authRequired.js";
 import { updatePasswordSchema, updateProfileSchema } from "../validators/authSchemas.js";

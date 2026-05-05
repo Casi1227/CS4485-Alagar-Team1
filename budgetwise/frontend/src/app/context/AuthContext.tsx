@@ -26,6 +26,8 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const THEME_STORAGE_KEY = 'bw_theme_mode';
   const AVATAR_COLOR_STORAGE_KEY = 'bw_avatar_color';
+  const ACCESS_TOKEN_STORAGE_KEY = 'bw_token';
+  const REFRESH_TOKEN_STORAGE_KEY = 'bw_refresh_token';
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
   const [token, setToken] = useState<string | null>(null);
@@ -40,7 +42,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const clearSession = () => {
-    localStorage.removeItem('bw_token');
+    localStorage.removeItem(ACCESS_TOKEN_STORAGE_KEY);
+    localStorage.removeItem(REFRESH_TOKEN_STORAGE_KEY);
     localStorage.removeItem('bw_user');
     clearExpensesPageMonthState();
     setToken(null);
@@ -49,7 +52,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const refreshUser = async () => {
-    const t = localStorage.getItem('bw_token');
+    const t = localStorage.getItem(ACCESS_TOKEN_STORAGE_KEY);
     if (!t) {
       clearSession();
       return;
@@ -75,7 +78,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     // Restore session quickly from localStorage
-    const t = localStorage.getItem('bw_token');
+    const t = localStorage.getItem(ACCESS_TOKEN_STORAGE_KEY);
+    const rt = localStorage.getItem(REFRESH_TOKEN_STORAGE_KEY);
     const u = localStorage.getItem('bw_user');
 
     if (t) setToken(t);
@@ -88,7 +92,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     // If token exists, validate/refresh from backend so user info is accurate
-    if (t) {
+    if (t || rt) {
       refreshUser().finally(() => setIsInitialized(true));
       return;
     }
@@ -140,10 +144,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     const nextToken = data?.token as string | undefined;
+    const nextRefreshToken = data?.refreshToken as string | undefined;
     const nextUser = data?.user as AuthUser | undefined;
-    if (!nextToken || !nextUser) throw new Error('Login failed');
+    if (!nextToken || !nextRefreshToken || !nextUser) throw new Error('Login failed');
 
-    localStorage.setItem('bw_token', nextToken);
+    localStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, nextToken);
+    localStorage.setItem(REFRESH_TOKEN_STORAGE_KEY, nextRefreshToken);
     localStorage.setItem('bw_user', JSON.stringify(nextUser));
     setToken(nextToken);
     setUser(nextUser);
@@ -164,10 +170,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     const nextToken = data?.token as string | undefined;
+    const nextRefreshToken = data?.refreshToken as string | undefined;
     const nextUser = data?.user as AuthUser | undefined;
-    if (!nextToken || !nextUser) throw new Error('Registration failed');
+    if (!nextToken || !nextRefreshToken || !nextUser) throw new Error('Registration failed');
 
-    localStorage.setItem('bw_token', nextToken);
+    localStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, nextToken);
+    localStorage.setItem(REFRESH_TOKEN_STORAGE_KEY, nextRefreshToken);
     localStorage.setItem('bw_user', JSON.stringify(nextUser));
     setToken(nextToken);
     setUser(nextUser);

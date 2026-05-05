@@ -37,6 +37,35 @@ Stop services:
 
 docker compose down
 
+### Optional: Scaled Backend Mode (Load Testing)
+
+This mode keeps normal developer flow unchanged and adds an opt-in
+backend load balancer + multiple backend replicas.
+
+Start with 3 backend replicas:
+
+```sh
+docker compose -f docker-compose.yml -f docker-compose.scale.yml up -d --build --scale backend=3
+```
+
+In this mode:
+
+* Frontend remains at: http://localhost:10000
+* Backend remains at: http://localhost:5001 (served by `backend-lb`)
+* `backend` containers are internal and can scale safely.
+
+Stop:
+
+```sh
+docker compose -f docker-compose.yml -f docker-compose.scale.yml down
+```
+
+Notes:
+
+* Default `docker compose up` is still available
+
+---
+
 ### Import Mock Data with Docker
 
 1) Copy your spreadsheet into:
@@ -175,10 +204,49 @@ docker compose up --build
 
 ---
 
+## Best Practices
+
+* Do not commit backend/.env
+* Do not commit frontend/.env.local
+* Do not commit node\_modules
+* Do not commit build output (dist, .next)
+* Keep API keys server-side only
+* Use PostgreSQL for all environments
+
+---
+
+## Deployment Notes (Upcoming)
+
+* App will be deployed using Docker on Render
+* CI must pass before merging to main
+* Health endpoint should be available at `/api/health`
+
+### Render Scaling Notes
+
+For horizontal scaling on Render:
+
+* Increase backend instance count (replicas) on the backend web service.
+* Keep frontend calling the same backend URL; Render handles balancing.
+* Prefer shared/distributed rate limits for multi-instance consistency.
+* Re-check DB connection pool limits when increasing replicas.
+
+---
+
 # Notes
 
 • Do not commit backend/.env  
 • Do not commit frontend/.env.local  
-• Do not commit node_modules  
+• Do not commit node modules  
 • Keep API keys server side only  
-• Use PostgreSQL for all environments
+• Use PostgreSQL for all environments  
+• Keep Groq API keys server side only  
+
+• Replace PLAID-SANDBOX-KEY values with your real Plaid Sandbox keys from the Plaid Dashboard.  
+• Test credentials for manual Link flow:  
+	* Username: user_good  
+	* Password: pass_good  
+• After linking, BudgetWise imports the last 30 days of transactions and maps them to app categories.  
+• Demo direct import mode (skip Plaid Link UI):  
+	* In backend/.env: PLAID_DEMO_DIRECT_IMPORT_ENABLED="true"  
+	* In frontend/.env.local: NEXT_PUBLIC_PLAID_DEMO_DIRECT_IMPORT_ENABLED="true"  
+	* With both enabled, clicking "Link with Plaid" imports Sandbox transactions directly.
