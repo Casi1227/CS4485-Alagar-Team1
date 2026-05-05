@@ -33,6 +33,8 @@ Services:
 • Backend: http://localhost:5001  
 • PostgreSQL: localhost:5433  
 
+**AI insights (Groq):** the backend does not ship with an API key. Create a file `budgetwise/.env` in the same folder as `docker-compose.yml` containing `GROQ_API_KEY=...` (get a key from the Groq console), or set that variable in your environment before `docker compose up`. Without it, AI insights return “not available” (HTTP 503).
+
 Stop services:
 
 docker compose down

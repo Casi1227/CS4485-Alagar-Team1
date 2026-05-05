@@ -1,6 +1,11 @@
 import os from "node:os";
 import { z } from "zod";
 
+/** Docker / host env sometimes injects `""`, which breaks `.optional()` / `.email()` defaults. */
+function emptyToUndefined(v: unknown): unknown {
+  return typeof v === "string" && v.trim() === "" ? undefined : v;
+}
+
 const envSchema = z.object({
   PORT: z.coerce.number().default(5001),
   CORS_ORIGIN: z.string().default("http://localhost:3000"),
@@ -12,11 +17,18 @@ const envSchema = z.object({
   /* 465 is the standard port for email message submission over TLS. */
   MAIL_SERVER_PORT: z.coerce.number().default(465),
   MAIL_SERVER_SECURE: z.coerce.boolean().default(true),
-  MAIL_SERVER_USER: z.string().optional(),
-  MAIL_SERVER_PASSWORD: z.string().optional(),
+  MAIL_SERVER_USER: z.preprocess(emptyToUndefined, z.string().optional()),
+  MAIL_SERVER_PASSWORD: z.preprocess(emptyToUndefined, z.string().optional()),
   /* Sender of reset-password emails. */
-  RESET_PASSWORD_SENDER_NAME: z.string().default("Budgetwise"),
-  RESET_PASSWORD_SENDER_ADDRESS: z.string().email().default("no-reply@localhost"),
+  RESET_PASSWORD_SENDER_NAME: z.preprocess(emptyToUndefined, z.string().default("Budgetwise")),
+  /* Use a real domain; z.string().email() rejects some single-label hosts (e.g. @localhost). */
+  RESET_PASSWORD_SENDER_ADDRESS: z.preprocess(
+    (v) => {
+      const x = emptyToUndefined(v);
+      return x === undefined ? "no-reply@example.com" : x;
+    },
+    z.string().email(),
+  ),
   // JWT_*
   JWT_SECRET: z.string().min(10, "JWT_SECRET must be at least 10 characters").default("dev_secret_change_me"),
   JWT_EXPIRES_IN: z.string().default("15m"),
@@ -28,7 +40,8 @@ const envSchema = z.object({
   BCRYPT_SALT_ROUNDS: z.coerce.number().int().min(8).max(14).default(10),
   // GROQ_API_KEY: Required for AI-powered budget recommendations feature.
   // If not provided, the AI insights endpoint will return a 503 (Unavailable) response.
-  GROQ_API_KEY: z.string().optional(),
+  // Docker Compose often passes ""; treat as unset.
+  GROQ_API_KEY: z.preprocess(emptyToUndefined, z.string().optional()),
   // Primary and fallback model IDs for dashboard recommendations.
   GROQ_MODEL_PRIMARY: z.string().default("openai/gpt-oss-20b"),
   GROQ_MODEL_FALLBACK_1: z.string().default("openai/gpt-oss-120b"),
