@@ -38,11 +38,16 @@ services:
     environment:
       DATABASE_URL: postgresql://myapp:secret@db/myapp_db
       JWT_SECRET: budgetwise_dev_secret_9f3a2c1d7e6b5a4c8d1f0e9b2a7c6d5e
+      JWT_REFRESH_SECRET: budgetwise_dev_refresh_secret_7a2c1d9e6b5f4a8c3d1f0e9b2a7c6d5e
       PORT: 5001
-      CORS_ORIGIN: http://localhost:10000
+      CORS_ORIGIN: http://localhost:3000,http://localhost:10000
+      # AI (Groq):
+      # Set GROQ_API_KEY in a `budgetwise/.env` file (see README)
+      # or export before `compose up`.
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
       OPENAI_API_KEY: ""
       MOCK_DATA_XLSX: /app/mock-data/personal_transactions_budgetwise_2025_2026.xlsx
-      FRONTEND_SERVER_NAME: www.budgetwise.local
+      FRONTEND_SERVER_ORIGIN: http://www.budgetwise.local/
       MAIL_SERVER_URL: smtp://mail.budgetwise.local/?ignoreTLS=true
       MAIL_SERVER_DOMAIN: budgetwise.local
     hostname: backend.budgetwise.local

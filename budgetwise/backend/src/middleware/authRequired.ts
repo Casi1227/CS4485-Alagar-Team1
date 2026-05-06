@@ -1,11 +1,15 @@
 import type { Request, Response, NextFunction } from "express";
 import { verifyAccessToken } from "../lib/jwt.js";
+import { env } from '../config/env.js';
 
-export type AuthedRequest = Request & { user?: { id: string; email: string } };
+export type AuthedRequest = Request
+  & { user?: { id: string; email: string } };
 
-export const PASSWORD_HASH_SALT = 12;
+export const PASSWORD_HASH_SALT = env.BCRYPT_SALT_ROUNDS;
 
-export function authRequired(req: AuthedRequest, res: Response, next: NextFunction) {
+export function authRequired(
+  req: AuthedRequest, res: Response, next: NextFunction,
+) {
   const header = req.headers.authorization;
   if (!header?.startsWith("Bearer ")) {
     return res.status(401).json({ error: "Missing Authorization header" });

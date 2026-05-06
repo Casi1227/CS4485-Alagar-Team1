@@ -1,0 +1,27 @@
+services:
+  # In scaled mode, backend replicas are internal only.
+  # The load balancer below owns host port 5001.
+  backend:
+    environment:
+      # Test-only capacity mode: effectively disable login rate limiting
+      # so benchmarks measure actual auth path throughput.
+      AUTH_LOGIN_RATE_WINDOW_MS: 60000
+      AUTH_LOGIN_RATE_LIMIT_PER_IP: 100000
+      AUTH_LOGIN_RATE_LIMIT_PER_ACCOUNT: 100000
+      BCRYPT_SALT_ROUNDS: 10
+    ports: !reset []
+
+  backend-lb:
+    image: nginx:1.27-alpine
+    depends_on:
+      - backend
+    restart: unless-stopped
+    ports:
+      - "5001:5001"
+    volumes:
+      - ./ops/nginx/backend-lb.conf:/etc/nginx/conf.d/default.conf:ro
+
+  # Keep frontend behavior unchanged; it still calls http://localhost:5001.
+  frontend:
+    depends_on:
+      - backend-lb
