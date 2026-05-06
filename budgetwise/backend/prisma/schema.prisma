@@ -40,6 +40,8 @@ model Expense {
   plaidImport PlaidTransactionImport?
 
   @@index([userId, date])
+  @@index([userId, type, date])
+  @@index([userId, date, id])
 }
 
 model LinkedAccount {

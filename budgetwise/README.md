@@ -16,23 +16,19 @@ Auth: JWT
 
 Containerization: Docker, Docker Compose
 
----
-
 ## Project Structure
 
-budgetwise/
+`budgetwise/`
 
-* backend: API server
-* frontend: Next.js UI
-* mail-server: mail-server configuration
-* openapi: API contract
-* design: reference prototypes
+* `backend`: API server
+* `frontend`: Next.js UI
+* `mail-server`: mail-server configuration
+* `openapi`: API contract
+* `design`: reference prototypes
 
-.github/
+`.github/`
 
-* workflows: CI pipeline (GitHub Actions)
-
----
+* `workflows`: CI pipeline (GitHub Actions)
 
 ## CI Pipeline
 
@@ -47,8 +43,6 @@ Checks:
 * backend build (TypeScript + Prisma)
 
 View runs in the Actions tab on GitHub.
-
----
 
 ## Local Setup (Docker Recommended)
 
@@ -71,13 +65,48 @@ Services:
     - submission://localhost
 * PostgreSQL: postgresql://localhost
 
+**AI insights (Groq):**
+the backend does not ship with an API key.
+Create a file `budgetwise/.env`
+in the same folder as `docker-compose.yml`
+containing `GROQ_API_KEY=...`
+(get a key from the Groq console),
+or set that variable in your environment before `docker compose up`.
+Without it,
+AI insights return “not available” (HTTP 503).
+
 Stop:
 
 ```sh
 docker compose down
 ```
 
----
+### Optional: Scaled Backend Mode (Load Testing)
+
+This mode keeps normal developer flow unchanged
+and adds an opt-in backend load balancer + multiple backend replicas.
+
+Start with 3 backend replicas:
+
+```sh
+docker compose -f docker-compose.yml -f docker-compose.scale.yml up -d --build --scale backend=3
+```
+
+In this mode:
+
+* Frontend remains at: http://localhost:10000
+* Backend remains at: http://localhost:5001 (served by `backend-lb`)
+* `backend` containers are internal and can scale safely.
+
+Stop:
+
+```sh
+docker compose -f docker-compose.yml -f docker-compose.scale.yml down
+```
+
+Notes:
+
+* Default `docker compose up` is still available
 
 ### Import Mock Data (Docker)
 
@@ -97,8 +126,6 @@ docker compose up --build
 docker compose --profile tools run --rm mock-seed
 ```
 
----
-
 ## Local Development (No Docker)
 
 ### 1. Database
@@ -111,8 +138,6 @@ Example:
 DATABASE_URL="postgresql://myapp:secret@localhost/myapp_db"
 ```
 
----
-
 ### 2. Mail server
 
 Ensure Postfix is properly configured and running.
@@ -123,8 +148,6 @@ Mail server runs on (depending upon the configuration) each of:
 * smtp://localhost
 * submissions://localhost
 * submission://localhost
-
----
 
 ### 3. Backend
 
@@ -141,8 +164,9 @@ JWT_SECRET=...
 PORT=5001
 CORS_ORIGIN=http://localhost:3000
 
-# Or leave unset to use the default of the local machine's hostname.
-FRONTEND_SERVER_NAME=...
+# Or leave unset to use the default of http://HOSTNAME/,
+# where HOSTNAME is the URI-encoded hostname of the local machine.
+FRONTEND_SERVER_ORIGIN=...
 
 # Appropriately set or comment out each of these,
 # depending upon how you configured the mail server.
@@ -174,8 +198,6 @@ Backend runs on:
 
 * http://localhost:5001
 
----
-
 ### 4. Frontend
 
 ```sh
@@ -188,8 +210,6 @@ Frontend runs on:
 
 * http://localhost:3000
 
----
-
 ## Database Commands
 
 ```sh
@@ -197,8 +217,6 @@ npx prisma migrate dev
 npx prisma generate
 npx prisma migrate reset
 ```
-
----
 
 ## Docker Commands
 
@@ -226,8 +244,6 @@ View logs:
 docker compose logs -f
 ```
 
----
-
 ## Troubleshooting
 
 Port 5001 already in use:
@@ -250,45 +266,44 @@ docker compose down -v
 docker compose up --build
 ```
 
----
-
 ## Best Practices
 
-* Do not commit backend/.env
-* Do not commit frontend/.env.local
-* Do not commit node\_modules
-* Do not commit build output (dist, .next)
+* Do not commit `backend/.env`
+* Do not commit `frontend/.env.local`
+* Do not commit `node_modules`
+* Do not commit build output (`dist`, `.next`)
 * Keep API keys server-side only
 * Use PostgreSQL for all environments
-
----
 
 ## Deployment Notes (Upcoming)
 
 * App will be deployed using Docker on Render
 * CI must pass before merging to main
-* Health endpoint should be available at `/health`
+* Health endpoint should be available at `/api/health`
 
+### Render Scaling Notes
 
-Notes
+For horizontal scaling on Render:
 
+* Increase backend instance count (replicas) on the backend web service
+* Keep frontend calling the same backend URL; Render handles balancing
+* Prefer shared/distributed rate limits for multi-instance consistency
+* Re-check DB connection pool limits when increasing replicas
 
-# Notes
+## Notes
 
-• Do not commit backend/.env  
-• Do not commit frontend/.env.local  
-• Do not commit node modules
-• Keep API keys server side only  
-• Use PostgreSQL for all environments
-* Keep Groq API keys server side only
-
-* Replace PLAID-SANDBOX-KEY values with your real Plaid Sandbox keys from the Plaid Dashboard.
+* See "Best Practices" above
+* Replace PLAID-SANDBOX-KEY values
+  with your real Plaid Sandbox keys from the Plaid Dashboard
 * Test credentials for manual Link flow:
-	* Username: user_good
-	* Password: pass_good
-* After linking, BudgetWise imports the last 30 days of transactions and maps them to app categories.
+	- Username: `user_good`
+	- Password: `pass_good`
+* After linking,
+  BudgetWise imports the last 30 days of transactions
+  and maps them to app categories.
 * Demo direct import mode (skip Plaid Link UI):
-	* In backend/.env: PLAID_DEMO_DIRECT_IMPORT_ENABLED="true"
-	* In frontend/.env.local: NEXT_PUBLIC_PLAID_DEMO_DIRECT_IMPORT_ENABLED="true"
-	* With both enabled, clicking "Link with Plaid" imports Sandbox transactions directly.
----
+	- In `backend/.env`: `PLAID_DEMO_DIRECT_IMPORT_ENABLED="true"`
+	- In `frontend/.env.local`:
+      `NEXT_PUBLIC_PLAID_DEMO_DIRECT_IMPORT_ENABLED="true"`
+	- With both enabled,
+      clicking "Link with Plaid" imports Sandbox transactions directly
