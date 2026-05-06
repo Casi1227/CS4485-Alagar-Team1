@@ -5,7 +5,7 @@
  * Base URL must be provided via NEXT_PUBLIC_API_BASE_URL.
  */
 
-const baseUrl = (process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5001').replace(/\/$/, '');
+export const BASE_URL = (process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5001').replace(/\/$/, '');
 export const PLAID_DEMO_DIRECT_IMPORT_ENABLED =
   process.env.NEXT_PUBLIC_PLAID_DEMO_DIRECT_IMPORT_ENABLED === 'true';
 
@@ -94,7 +94,7 @@ export async function syncPlaidLinkedAccount(linkedAccountId: string): Promise<{
 }
 
 export async function apiJson(path: string, init: RequestInit = {}) {
-  const url = `${baseUrl}${path.startsWith('/') ? path : `/${path}`}`;
+  const url = `${BASE_URL}${path.startsWith('/') ? path : `/${path}`}`;
 
   const headers = new Headers(init.headers);
   if (!headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
@@ -106,7 +106,7 @@ export async function apiJson(path: string, init: RequestInit = {}) {
   try {
     res = await fetch(url, { ...init, headers });
   } catch {
-    throw new Error(`Unable to reach the API at ${baseUrl}. Please verify the backend is running and your browser origin is allowed.`);
+    throw new Error(`Unable to reach the API at ${BASE_URL}. Please verify the backend is running and your browser origin is allowed.`);
   }
   const text = await res.text();
   const data = text ? safeJsonParse(text) : null;

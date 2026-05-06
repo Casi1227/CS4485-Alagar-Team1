@@ -1,5 +1,6 @@
 "use client";
 
+import { BASE_URL } from "../lib/api";
 import { useState } from "react";
 import { CreditCard, Mail, TrendingUp, PieChart, DollarSign } from "lucide-react";
 
@@ -48,14 +49,14 @@ export function ForgotPassword() {
             setLoading(true);
 
             const response = await fetch(
-                `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/auth/forgot-password`,
+                `${BASE_URL}/api/auth/forgot-password`,
                 {
                     method: "POST",
                     headers: {
                         "Content-Type": "application/json",
                     },
                     body: JSON.stringify({ email }),
-                }
+                },
             );
 
             const data = await response.json();
