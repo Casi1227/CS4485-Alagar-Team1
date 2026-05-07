@@ -2,7 +2,7 @@
 
 /**
  * Minimal fetch helper.
- * Base URL must be provided via NEXT_PUBLIC_API_BASE_URL.
+ * Base URL, AKA API origin, must be provided via NEXT_PUBLIC_API_BASE_URL.
  */
 
 export const API_ORIGIN =
